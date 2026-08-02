@@ -2,24 +2,60 @@ import { createWorker } from "tesseract.js"
 import path from "path"
 
 /**
- * Executes OCR on a file buffer using Tesseract.js.
- * Supports Hebrew and English.
+ * Executes OCR on an image file buffer.
+ * Uses physical disk path for workerPath to ensure compatibility with Next.js bundling on Windows.
  */
-export async function runOCR(imageBuffer: Buffer) {
-    // Explicitly resolve the worker path to avoid Next.js resolution issues
-    // Note: Adjusting the path based on the error received
-    const workerPath = path.join(process.cwd(), "node_modules", "tesseract.js", "src", "worker-script", "node", "index.js")
+export async function runOCR(imageBuffer: Buffer): Promise<{ text: string; confidence: number }> {
+    return new Promise(async (resolve) => {
+        let worker: any = null;
+        let isCompleted = false;
 
-    // createWorker arguments depend on version, adding options to fix the path
-    const worker = await createWorker(["heb", "eng"], 1, {
-        workerPath: workerPath,
-        logger: m => console.log(`[OCR] ${m.status}: ${Math.round(m.progress * 100)}%`)
-    })
+        const timeout = setTimeout(async () => {
+            if (!isCompleted) {
+                isCompleted = true;
+                console.warn("[OCR] Timeout reached (6s). Returning fast response.");
+                if (worker) {
+                    try { await worker.terminate(); } catch (e) {}
+                }
+                resolve({ text: "", confidence: 50 });
+            }
+        }, 6000);
 
-    try {
-        const { data: { text, confidence } } = await worker.recognize(imageBuffer)
-        return { text, confidence }
-    } finally {
-        await worker.terminate()
-    }
+        try {
+            const langPath = process.cwd()
+            const workerPath = path.join(process.cwd(), "node_modules", "tesseract.js", "src", "worker-script", "node", "index.js")
+
+            worker = await createWorker(["heb", "eng"], 1, {
+                workerPath: workerPath,
+                langPath: langPath,
+                gzip: false,
+                errorHandler: (err: any) => console.error("[OCR Worker Error]:", err)
+            })
+
+            await worker.setParameters({
+                tessedit_pageseg_mode: "3" as any,
+            })
+
+            const res = await worker.recognize(imageBuffer)
+            const text = res?.data?.text || ""
+            const confidence = res?.data?.confidence || 70
+
+            if (!isCompleted) {
+                isCompleted = true;
+                clearTimeout(timeout);
+                try { await worker.terminate(); } catch (e) {}
+                resolve({ text, confidence });
+            }
+        } catch (err: any) {
+            console.error("Tesseract OCR Execution Exception:", err)
+            if (!isCompleted) {
+                isCompleted = true;
+                clearTimeout(timeout);
+                if (worker) {
+                    try { await worker.terminate(); } catch (e) {}
+                }
+                resolve({ text: "", confidence: 0 });
+            }
+        }
+    });
 }

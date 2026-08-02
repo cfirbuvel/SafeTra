@@ -1,5 +1,14 @@
--- The notifications table already exists, let's just make sure it has everything we need.
--- The screenshot shows it has transaction_id, let's add deal_id as well for consistency with our current flow.
+-- Ensure notifications table exists
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  title TEXT,
+  content TEXT,
+  read BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
 DO $$
 BEGIN
@@ -11,6 +20,7 @@ BEGIN
         ALTER TABLE public.notifications ADD COLUMN type TEXT NOT NULL DEFAULT 'SYSTEM';
     END IF;
 END $$;
+
 
 -- Drop and recreate policies to ensure they are correct without erroring if they exist
 DROP POLICY IF EXISTS "Users can view their own notifications" ON public.notifications;

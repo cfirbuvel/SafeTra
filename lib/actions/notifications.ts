@@ -7,7 +7,7 @@ import { Notification } from "@/lib/types/database"
 
 /**
  * Internal helper to create a notification.
- * This skips RLS as it's typically called during other server actions.
+ * Handles database schema variations (is_read/read, message/content).
  */
 export async function createNotification(params: {
     userId: string
@@ -18,7 +18,8 @@ export async function createNotification(params: {
 }) {
     const serviceClient = getServiceRoleClient()
 
-    const { data, error } = await (serviceClient
+    // Primary attempt: standard schema with is_read & message
+    let { data, error } = await (serviceClient
         .from("notifications") as any)
         .insert({
             user_id: params.userId,
@@ -31,9 +32,39 @@ export async function createNotification(params: {
         .select()
         .single()
 
+    // Fallback attempt: schema with read & content columns (PGRST204)
+    if (error && (error.code === "PGRST204" || error.message?.includes("is_read") || error.message?.includes("message"))) {
+        console.warn("[Notifications] Retrying with legacy schema columns (read/content)...")
+        const fallbackRes = await (serviceClient
+            .from("notifications") as any)
+            .insert({
+                user_id: params.userId,
+                deal_id: params.dealId,
+                type: params.type,
+                title: params.title,
+                content: params.message,
+                read: false
+            })
+            .select()
+            .single()
+        
+        data = fallbackRes.data
+        error = fallbackRes.error
+    }
+
     if (error) {
         console.error("Failed to create notification:", error)
         return null
+    }
+
+    // Normalize output object to match Notification interface
+    if (data) {
+        if (data.read !== undefined && data.is_read === undefined) {
+            data.is_read = data.read
+        }
+        if (data.content !== undefined && data.message === undefined) {
+            data.message = data.content
+        }
     }
 
     return data as Notification
@@ -60,7 +91,14 @@ export async function getNotifications() {
         return []
     }
 
-    return data as Notification[]
+    // Normalize items
+    const normalized = (data || []).map((item: any) => ({
+        ...item,
+        is_read: item.is_read ?? item.read ?? false,
+        message: item.message ?? item.content ?? ""
+    }))
+
+    return normalized as Notification[]
 }
 
 /**
@@ -72,18 +110,27 @@ export async function markAsRead(notificationId: string) {
 
     const serviceClient = getServiceRoleClient()
 
-    // Ensure the notification belongs to the user
-    const { error } = await (serviceClient
+    // Try updating is_read
+    let { error } = await (serviceClient
         .from("notifications") as any)
         .update({ is_read: true })
         .match({ id: notificationId, user_id: user.id })
+
+    // Fallback: update read column
+    if (error && (error.code === "PGRST204" || error.message?.includes("is_read"))) {
+        const res = await (serviceClient
+            .from("notifications") as any)
+            .update({ read: true })
+            .match({ id: notificationId, user_id: user.id })
+        error = res.error
+    }
 
     if (error) {
         console.error("Failed to mark notification as read:", error)
         return { error: "Failed to update notification" }
     }
 
-    revalidatePath("/") // Often needed if navbar is everywhere
+    revalidatePath("/")
     return { success: true }
 }
 
@@ -96,11 +143,18 @@ export async function markAllAsRead() {
 
     const serviceClient = getServiceRoleClient()
 
-    const { error } = await (serviceClient
+    let { error } = await (serviceClient
         .from("notifications") as any)
         .update({ is_read: true })
         .eq("user_id", user.id)
-        .eq("is_read", false)
+
+    if (error && (error.code === "PGRST204" || error.message?.includes("is_read"))) {
+        const res = await (serviceClient
+            .from("notifications") as any)
+            .update({ read: true })
+            .eq("user_id", user.id)
+        error = res.error
+    }
 
     if (error) {
         console.error("Failed to mark all notifications as read:", error)

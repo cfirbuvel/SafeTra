@@ -167,6 +167,39 @@ export default async function LawyerDealPage({ params }: LawyerDealPageProps) {
                             </div>
                         </Card>
 
+                        {/* 3. Escrow Payment & Verification */}
+                        <Card className="p-6">
+                            <h2 className="text-xl font-bold mb-4">אימות הפקדת נאמנות 🔒</h2>
+                            <div className="space-y-4">
+                                <div className="p-4 bg-primary/10 rounded-xl border border-primary/20 flex items-center justify-between">
+                                    <div>
+                                        <p className="text-xs text-muted-foreground">קוד ייחוס להעברה:</p>
+                                        <p className="font-mono text-lg font-bold text-primary dir-ltr">
+                                            ST-{deal.id.slice(0, 4).toUpperCase()}-{deal.id.slice(-4).toUpperCase()}
+                                        </p>
+                                    </div>
+                                    <div className="text-left">
+                                        <p className="text-xs text-muted-foreground">סכום העסקה בנאמנות:</p>
+                                        <p className="text-lg font-bold text-foreground">₪{Number(deal.price_ils).toLocaleString()}</p>
+                                    </div>
+                                </div>
+                                {deal.payment_proof_url ? (
+                                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                                        <span className="text-sm font-medium">אסמכתת העברה בנקאית:</span>
+                                        <a
+                                            href={deal.payment_proof_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-sm font-bold text-primary hover:underline flex items-center gap-1"
+                                        >
+                                            📄 לצפייה בקובץ האסמכתא
+                                        </a>
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-amber-500 font-semibold">טרם הועלתה אסמכתת העברה בנקאית ע״י הקונה</p>
+                                )}
+                            </div>
+                        </Card>
                     </div>
                 </div>
             </div>

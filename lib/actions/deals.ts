@@ -61,47 +61,105 @@ export async function inviteBuyer(dealId: string, buyerPhone: string) {
   if (dealError || !deal) return { error: "עסקה לא נמצאה או שאין הרשאה" }
   if ((deal as any).status === "EXPIRED") return { error: "לא ניתן להזמין קונה לעסקה שפגה" }
 
-  // 3. Find or Create Buyer (Shadow User)
-  const cleanContact = normalizePhone(buyerPhone)
-  const shadowEmail = `${cleanContact}@autotrust-demo.com`
-  const shadowPassword = `AutoTrust_Secret_${cleanContact}!`
+  // 3. Normalize Input (Can be Phone or Email)
+  const rawInput = buyerPhone.trim().toLowerCase()
+  const isEmailInput = rawInput.includes("@")
+  const cleanContact = normalizePhone(rawInput)
+
+  // 4. Fetch all profiles & auth users to locate registered user
+  const { data: existingProfiles } = await serviceClient
+    .from("profiles")
+    .select("id, full_name, phone, email")
 
   const { data: { users: authUsers } } = await serviceClient.auth.admin.listUsers()
-  let authUser = (authUsers as any[]).find((u: any) => u.email === shadowEmail)
 
-  if (!authUser) {
-    const { data: newUser, error: createError } = await serviceClient.auth.admin.createUser({
-      email: shadowEmail,
-      password: shadowPassword,
-      email_confirm: true,
-      user_metadata: { original_contact: buyerPhone }
+  let registeredUser = (existingProfiles as any[])?.find((p: any) => {
+    if (isEmailInput && p.email?.toLowerCase() === rawInput) return true
+    if (p.email?.toLowerCase() === rawInput) return true
+    if (p.phone && (p.phone === cleanContact || normalizePhone(p.phone) === cleanContact || p.phone === buyerPhone)) return true
+    return false
+  })
+
+  // If not found in profiles, check auth users list by email or phone in metadata
+  if (!registeredUser && authUsers) {
+    const matchedAuthUser = authUsers.find((u: any) => {
+      if (u.email?.toLowerCase() === rawInput) return true
+      if (u.phone && normalizePhone(u.phone) === cleanContact) return true
+      if (u.user_metadata?.phone && normalizePhone(u.user_metadata.phone) === cleanContact) return true
+      return false
     })
 
-    if (createError) return { error: "שגיאה ביצירת קונה" }
-    authUser = newUser.user
+    if (matchedAuthUser) {
+      const existingProf = existingProfiles?.find((p: any) => p.id === matchedAuthUser.id)
+      registeredUser = {
+        id: matchedAuthUser.id,
+        full_name: existingProf?.full_name || matchedAuthUser.user_metadata?.full_name || "משתמש רשום",
+        email: matchedAuthUser.email,
+        phone: cleanContact
+      }
+
+      await serviceClient
+        .from("profiles")
+        .upsert({
+          id: matchedAuthUser.id,
+          email: matchedAuthUser.email,
+          full_name: registeredUser.full_name,
+          phone: cleanContact
+        } as any, { onConflict: "id" })
+    }
   }
 
-  if (!authUser) return { error: "שגיאה באיתור משתמש" }
+  let targetUserId: string
 
-  // 4. Ensure Profile Exists
-  const profileUpsertData = {
-    id: authUser.id,
-    email: shadowEmail,
-    full_name: "קונה מוזמן",
-    phone: cleanContact,
-    invited_by: user.id
+  if (registeredUser) {
+    targetUserId = registeredUser.id
+    // Update phone on profile if missing so future lookups succeed instantly
+    if (!registeredUser.phone && cleanContact) {
+      await serviceClient
+        .from("profiles")
+        .update({ phone: cleanContact })
+        .eq("id", registeredUser.id)
+    }
+  } else {
+    // Fallback: Find or Create Buyer (Shadow User)
+    const shadowEmail = isEmailInput ? rawInput : `${cleanContact}@autotrust-demo.com`
+    const shadowPassword = `AutoTrust_Secret_${cleanContact}!`
+
+    let authUser = (authUsers as any[])?.find((u: any) => u.email === shadowEmail)
+
+    if (!authUser) {
+      const { data: newUser, error: createError } = await serviceClient.auth.admin.createUser({
+        email: shadowEmail,
+        password: shadowPassword,
+        email_confirm: true,
+        user_metadata: { original_contact: buyerPhone }
+      })
+
+      if (createError) return { error: "שגיאה ביצירת קונה" }
+      authUser = newUser.user
+    }
+
+    if (!authUser) return { error: "שגיאה באיתור משתמש" }
+    targetUserId = authUser.id
+
+    // Ensure Profile Exists for Shadow User
+    await serviceClient
+      .from("profiles")
+      .upsert({
+        id: targetUserId,
+        email: shadowEmail,
+        full_name: "קונה מוזמן",
+        phone: cleanContact,
+        invited_by: user.id
+      } as any, { onConflict: "id" })
   }
 
-  await serviceClient
-    .from("profiles")
-    .upsert(profileUpsertData as any, { onConflict: "id" })
-
-  // 5. Create Invitation RECORD (The New Way)
+  // 5. Create Invitation RECORD
   const { data: invitation, error: inviteError } = await serviceClient
     .from("deal_invitations")
     .insert({
       deal_id: dealId,
-      buyer_id: authUser.id,
+      buyer_id: targetUserId,
       phone: cleanContact,
       status: "PENDING"
     })
@@ -113,16 +171,16 @@ export async function inviteBuyer(dealId: string, buyerPhone: string) {
     return { error: "שגיאה ביצירת הזמנה" }
   }
 
-  // 6. Notify Buyer
+  // 6. Notify Buyer (Registered user or shadow user)
   await createNotification({
-    userId: authUser.id,
+    userId: targetUserId,
     dealId: dealId,
     type: "NEW_INVITATION",
-    title: "הזמנה לעסקה חדשה",
-    message: `הוזמנת לעסקה חדשה עבור ${deal.title}. לחץ כאן לאישור.`
+    title: "הזמנה לעסקה חדשה 🚗",
+    message: `הוזמנת לעסקה חדשה עבור "${deal.title}". לחץ כאן לאישור והצטרפות.`
   })
 
-  // 6. Generate UNIQUE Link
+  // 7. Generate UNIQUE Link
   const inviteLink = `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/deals/${dealId}/join?invite=${invitation.id}`
 
   revalidatePath(`/deals/${dealId}`)
@@ -244,11 +302,13 @@ export async function createDeal(formData: FormData) {
     return { error: "שגיאה ביצירת עסקה" }
   }
 
-  // Notify Lawyers
-  const { data: lawyers } = await (serviceClient.from("profiles") as any).select("id").eq("role", "lawyer")
-  for (const lawyer of (lawyers || [])) {
+  // Notify Lawyers & Admins
+  const { data: staff } = await (serviceClient.from("profiles") as any)
+    .select("id")
+    .in("role", ["lawyer", "admin"])
+  for (const member of (staff || [])) {
     await createNotification({
-      userId: lawyer.id,
+      userId: member.id,
       dealId: data.id,
       type: "NEW_DEAL",
       title: "עסקה חדשה במערכת",
@@ -298,26 +358,65 @@ export async function getDealById(dealId: string) {
   const seller = profiles?.find((p: any) => p.id === sellerId)
   const buyer = profiles?.find((p: any) => p.id === buyerId)
 
+  const sellerConfirmed = deal.seller_confirmed_delivery || deal.vehicle_reg_owner_name?.includes("SELLER_CONFIRMED")
+  const buyerConfirmed = deal.buyer_confirmed_delivery || deal.vehicle_reg_owner_name?.includes("BUYER_CONFIRMED")
+
   const enrichedDeal = {
     ...deal,
+    payment_proof_url: deal.payment_proof_url || (deal.vehicle_reg_owner_id?.startsWith("http") ? deal.vehicle_reg_owner_id : null),
+    seller_confirmed_delivery: !!sellerConfirmed,
+    buyer_confirmed_delivery: !!buyerConfirmed,
     seller: seller || null,
     buyer: buyer || null
   }
 
   // Permission Check
-  const isLawyer = (user as any).role === 'lawyer'
-  if (!isLawyer && enrichedDeal.seller_id !== user.id && enrichedDeal.buyer_id !== user.id) {
-    // Check if user has an invitation
-    const { data: invitation } = await (serviceClient
+  const isLawyerOrAdmin = (user as any).role === 'lawyer' || (user as any).role === 'admin'
+  if (!isLawyerOrAdmin && enrichedDeal.seller_id !== user.id && enrichedDeal.buyer_id !== user.id) {
+    // Check if user has an invitation (by buyer_id or phone match)
+    const { data: invitations } = await (serviceClient
       .from("deal_invitations") as any)
       .select("id")
       .eq("deal_id", dealId)
       .eq("buyer_id", user.id)
-      .maybeSingle()
+      .limit(1)
+
+    const invitation = invitations && invitations.length > 0 ? invitations[0] : null
 
     if (!invitation) {
-      console.warn(`[v0] User ${user.id} attempted to access deal ${dealId} without permission`)
-      return null
+      const { data: userProfile } = await (serviceClient.from("profiles") as any)
+        .select("phone, email")
+        .eq("id", user.id)
+        .maybeSingle()
+
+      let phoneMatchedInvite = null
+      if (userProfile?.phone) {
+        const cleanPhone = normalizePhone(userProfile.phone)
+        const { data: matched } = await (serviceClient.from("deal_invitations") as any)
+          .select("id")
+          .eq("deal_id", dealId)
+          .or(`phone.eq.${cleanPhone},phone.eq.${userProfile.phone}`)
+          .limit(1)
+        phoneMatchedInvite = matched && matched.length > 0 ? matched[0] : null
+      }
+
+      if (phoneMatchedInvite) {
+        // Auto-claim invitation for user
+        await (serviceClient.from("deal_invitations") as any)
+          .update({ buyer_id: user.id })
+          .eq("id", phoneMatchedInvite.id)
+      } else {
+        console.warn(`[v0] User ${user.id} attempted to access deal ${dealId} without permission`)
+        return null
+      }
+    }
+
+    // Ensure buyer_id is updated on the deal record if not set
+    if (!enrichedDeal.buyer_id && enrichedDeal.seller_id !== user.id) {
+      await (serviceClient.from("deals") as any)
+        .update({ buyer_id: user.id })
+        .eq("id", dealId)
+      enrichedDeal.buyer_id = user.id
     }
   }
 
@@ -355,16 +454,25 @@ export async function joinDeal(dealId: string, invitationId?: string) {
 
     if (inviteError || !invitation) return { error: "הזמנה לא תקינה" }
 
-    // Optionally check if invitation is for THIS user (phone match)
-    // But since we created the user based on phone, ID match is safer
-    if (invitation.buyer_id !== user.id) {
+    const { data: userProfile } = await (serviceClient.from("profiles") as any)
+      .select("phone, email")
+      .eq("id", user.id)
+      .maybeSingle()
+
+    const cleanPhone = userProfile?.phone ? normalizePhone(userProfile.phone) : null
+
+    const isMatch = invitation.buyer_id === user.id ||
+      (cleanPhone && (invitation.phone === cleanPhone || normalizePhone(invitation.phone) === cleanPhone)) ||
+      (userProfile?.email && invitation.phone === userProfile.email)
+
+    if (!isMatch) {
       return { error: "הזמנה זו אינה מיועדת לחשבון זה" }
     }
 
-    // Mark invitation as accepted
+    // Mark invitation as accepted and reassign to current user
     await serviceClient
       .from("deal_invitations")
-      .update({ status: "ACCEPTED" })
+      .update({ status: "ACCEPTED", buyer_id: user.id })
       .eq("id", invitationId)
   }
 
@@ -478,23 +586,23 @@ export async function updateDealStatus(dealId: string, newStatus: string) {
   /* Method updated to use Service Role + Manual Permission Checks */
   const serviceClient = getServiceRoleClient()
 
-  // Lawyer Override: Allow Lawyer to move to ANY status
-  const isLawyer = (user as any).role === 'lawyer'
+  // Lawyer/Admin Override: Allow Lawyer/Admin to move to ANY status
+  const isLawyerOrAdmin = (user as any).role === 'lawyer' || (user as any).role === 'admin'
 
-  if (!isLawyer && !validTransitions[deal.status]?.includes(newStatus)) {
+  if (!isLawyerOrAdmin && !validTransitions[deal.status]?.includes(newStatus)) {
     return { error: `מעבר לא חוקי מ-${deal.status} ל-${newStatus}` }
   }
 
   /* 
      Dynamic Query Construction:
-     If lawyer, update by ID only.
+     If lawyer/admin, update by ID only.
      If seller, enforce seller_id match to prevent unauthorized updates.
   */
   let query = (serviceClient.from("deals") as any)
     .update({ status: newStatus })
     .eq("id", dealId)
 
-  if (!isLawyer) {
+  if (!isLawyerOrAdmin) {
     query = query.eq("seller_id", user.id)
   }
 
@@ -512,10 +620,12 @@ export async function updateDealStatus(dealId: string, newStatus: string) {
   if (deal.seller_id && deal.seller_id !== user.id) partiesToNotify.push(deal.seller_id)
   if (deal.buyer_id && deal.buyer_id !== user.id) partiesToNotify.push(deal.buyer_id)
 
-  // Also notify lawyers if appropriate (e.g., when submitted or ready for review)
+  // Also notify lawyers and admins if appropriate (e.g., when submitted or ready for review)
   if (newStatus === 'SUBMITTED' || newStatus === 'UNDER_REVIEW') {
-    const { data: lawyers } = await (serviceClient.from("profiles") as any).select("id").eq("role", "lawyer")
-    lawyers?.forEach((l: any) => partiesToNotify.push(l.id))
+    const { data: staff } = await (serviceClient.from("profiles") as any)
+      .select("id")
+      .in("role", ["lawyer", "admin"])
+    staff?.forEach((l: any) => partiesToNotify.push(l.id))
   }
 
   for (const userId of partiesToNotify) {
@@ -548,7 +658,36 @@ export async function getUserDeals() {
 
   const serviceClient = getServiceRoleClient()
 
-  // Get deals where user is seller or buyer
+  // 1. Auto-claim pending invitations/notifications matching user's phone
+  const { data: userProfile } = await (serviceClient.from("profiles") as any)
+    .select("phone, email")
+    .eq("id", user.id)
+    .maybeSingle()
+
+  if (userProfile && (userProfile.phone || userProfile.email)) {
+    const cleanPhone = userProfile.phone ? normalizePhone(userProfile.phone) : null
+
+    if (cleanPhone) {
+      const { data: orphanInvites } = await (serviceClient.from("deal_invitations") as any)
+        .select("id, buyer_id")
+        .or(`phone.eq.${cleanPhone},phone.eq.${userProfile.phone}`)
+        .neq("buyer_id", user.id)
+
+      if (orphanInvites && orphanInvites.length > 0) {
+        const orphanBuyerIds = orphanInvites.map((i: any) => i.buyer_id)
+        
+        await (serviceClient.from("deal_invitations") as any)
+          .update({ buyer_id: user.id })
+          .in("id", orphanInvites.map((i: any) => i.id))
+
+        await (serviceClient.from("notifications") as any)
+          .update({ user_id: user.id })
+          .in("user_id", orphanBuyerIds)
+      }
+    }
+  }
+
+  // 2. Get deals where user is seller or buyer
   const { data: directDeals, error: directError } = await (serviceClient
     .from("deals") as any)
     .select("*")
@@ -560,7 +699,7 @@ export async function getUserDeals() {
     return []
   }
 
-  // Also get deals where user has an invitation
+  // 3. Also get deals where user has an invitation
   const { data: invites, error: inviteError } = await (serviceClient
     .from("deal_invitations") as any)
     .select("deal_id")
@@ -589,4 +728,269 @@ export async function getUserDeals() {
   }
 
   return directDeals || []
+}
+
+export async function uploadPaymentProofAction(dealId: string, formData: FormData) {
+  const supabase = await getSupabaseClient()
+  const serviceClient = getServiceRoleClient() as any
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "משתמש לא מחובר" }
+
+  const file = formData.get("file") as File
+  if (!file) return { error: "קובץ אסמכתא חסר" }
+
+  const fileExt = file.name.split(".").pop() || "jpg"
+  const fileName = `payment_proof_${Date.now()}.${fileExt}`
+  const filePath = `${user.id}/${fileName}`
+
+  // Convert File to Buffer to ensure correct MIME handling in Node environment
+  const arrayBuffer = await file.arrayBuffer()
+  const buffer = Buffer.from(arrayBuffer)
+
+  const { error: uploadError } = await serviceClient.storage
+    .from("documents")
+    .upload(filePath, buffer, {
+      contentType: file.type || "image/jpeg",
+      upsert: true
+    })
+
+  if (uploadError) {
+    console.error("Upload payment proof error:", uploadError)
+    return { error: `שגיאה בהעלאת אסמכתא: ${uploadError.message}` }
+  }
+
+  const { data: { publicUrl } } = serviceClient.storage
+    .from("documents")
+    .getPublicUrl(filePath)
+
+  // Primary update attempt with payment_proof_url column
+  const updatePayload: any = {
+    status: "PAYMENT_VERIFICATION",
+    vehicle_reg_owner_id: publicUrl,
+    updated_at: new Date().toISOString()
+  }
+
+  const { error: updateError } = await (serviceClient.from("deals") as any)
+    .update({ ...updatePayload, payment_proof_url: publicUrl })
+    .eq("id", dealId)
+
+  if (updateError && updateError.code === "PGRST204") {
+    // Schema fallback: update status without payment_proof_url column
+    const { error: fallbackError } = await (serviceClient.from("deals") as any)
+      .update(updatePayload)
+      .eq("id", dealId)
+
+    if (fallbackError) {
+      console.error("Update deal payment status fallback error:", fallbackError)
+      return { error: `שגיאה בעדכון סטטוס עסקה: ${fallbackError.message}` }
+    }
+  } else if (updateError) {
+    console.error("Update deal payment status error:", updateError)
+    return { error: `שגיאה בעדכון סטטוס עסקה: ${updateError.message}` }
+  }
+
+  // Create notification for lawyers / admin
+  const { data: lawyerProfiles } = await (serviceClient.from("profiles") as any)
+    .select("id")
+    .eq("role", "lawyer")
+
+  if (lawyerProfiles && lawyerProfiles.length > 0) {
+    for (const lawyer of lawyerProfiles) {
+      await createNotification({
+        userId: lawyer.id,
+        title: "אסמכתת הפקדת נאמנות חדשה 💳",
+        message: `הועלתה אסמכתת תשלום חדשה לבדיקה עבור עסקה ${dealId.slice(0, 8)}`,
+        dealId,
+        type: "PAYMENT_VERIFICATION"
+      })
+    }
+  }
+
+  revalidatePath(`/deals/${dealId}`)
+  revalidatePath("/dashboard")
+  revalidatePath("/lawyer")
+
+  return { success: true, proofUrl: publicUrl }
+}
+
+export async function verifyEscrowDepositAction(dealId: string) {
+  const supabase = await getSupabaseClient()
+  const serviceClient = getServiceRoleClient() as any
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "משתמש לא מחובר" }
+
+  // Check deal details
+  const { data: deal } = await (serviceClient.from("deals") as any)
+    .select("seller_id, buyer_id, title")
+    .eq("id", dealId)
+    .maybeSingle()
+
+  if (!deal) return { error: "עסקה לא נמצאה" }
+
+  // Update status to OWNERSHIP_TRANSFER_PENDING (Escrow Locked)
+  await (serviceClient.from("deals") as any)
+    .update({
+      status: "OWNERSHIP_TRANSFER_PENDING",
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", dealId)
+
+  // Notify both Seller and Buyer
+  if (deal.seller_id) {
+    await createNotification({
+      userId: deal.seller_id,
+      title: "כספי הנאמנות אושרו ונעולים בכספת! 🔒",
+      message: `עורך הדין אימת את הפקדת הנאמנות עבור "${deal.title}". ניתן להמשיך להעברת בעלות.`,
+      dealId,
+      type: "ESCROW_LOCKED"
+    })
+  }
+
+  if (deal.buyer_id) {
+    await createNotification({
+      userId: deal.buyer_id,
+      title: "כספי הנאמנות אושרו ונעולים בכספת! 🔒",
+      message: `עורך הדין אימת את העברת הכספים. הכספים מוגנים בנאמנות SafeTra.`,
+      dealId,
+      type: "ESCROW_LOCKED"
+    })
+  }
+
+  revalidatePath(`/deals/${dealId}`)
+  revalidatePath("/dashboard")
+  revalidatePath("/lawyer")
+
+  return { success: true }
+}
+
+export async function confirmHandoverAction(dealId: string, role: "seller" | "buyer") {
+  const supabase = await getSupabaseClient()
+  const serviceClient = getServiceRoleClient() as any
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "משתמש לא מחובר" }
+
+  const { data: deal } = await (serviceClient.from("deals") as any)
+    .select("*")
+    .eq("id", dealId)
+    .maybeSingle()
+
+  if (!deal) return { error: "עסקה לא נמצאה" }
+
+  const currentNotes = deal.vehicle_reg_owner_name || ""
+  const isSeller = role === "seller"
+
+  const sellerConfirmed = isSeller ? true : currentNotes.includes("SELLER_CONFIRMED") || !!deal.seller_confirmed_delivery
+  const buyerConfirmed = !isSeller ? true : currentNotes.includes("BUYER_CONFIRMED") || !!deal.buyer_confirmed_delivery
+
+  const isBothConfirmed = sellerConfirmed && buyerConfirmed
+  const newStatus = isBothConfirmed ? "COMPLETED" : "OWNERSHIP_TRANSFER_PENDING"
+
+  const flags = []
+  if (sellerConfirmed) flags.push("SELLER_CONFIRMED")
+  if (buyerConfirmed) flags.push("BUYER_CONFIRMED")
+  const newOwnerName = flags.join(",")
+
+  const updateData: any = {
+    updated_at: new Date().toISOString(),
+    status: newStatus,
+    vehicle_reg_owner_name: newOwnerName
+  }
+
+  if (isSeller) updateData.seller_confirmed_delivery = true
+  if (!isSeller) updateData.buyer_confirmed_delivery = true
+
+  let { error: updateError } = await (serviceClient.from("deals") as any)
+    .update(updateData)
+    .eq("id", dealId)
+
+  if (updateError && updateError.code === "PGRST204") {
+    await (serviceClient.from("deals") as any)
+      .update({
+        status: newStatus,
+        vehicle_reg_owner_name: newOwnerName,
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", dealId)
+  }
+
+  if (isBothConfirmed) {
+    // Notify both parties of completed deal & payout
+    if (deal.seller_id) {
+      await createNotification({
+        userId: deal.seller_id,
+        title: "העסקה הושלמה בהצלחה! 💸",
+        message: `אישור מסירה דו-צדדי התקבל. כספי הנאמנות בסך ₪${Number(deal.price_ils).toLocaleString("he-IL")} שוחררו לחשבונך.`,
+        dealId,
+        type: "COMPLETED"
+      })
+    }
+    if (deal.buyer_id) {
+      await createNotification({
+        userId: deal.buyer_id,
+        title: "תתחדש! העסקה הושלמה בהצלחה 🚗",
+        message: `אישור המסירה הדו-צדדי הושלם. תודה שהשתמשת ב-SafeTra!`,
+        dealId,
+        type: "COMPLETED"
+      })
+    }
+  } else {
+    // Notify the other party of handover signoff
+    const otherUserId = isSeller ? deal.buyer_id : deal.seller_id
+    if (otherUserId) {
+      await createNotification({
+        userId: otherUserId,
+        title: "אישור מסירת רכב חדש 🔑",
+        message: `${isSeller ? "המוכר" : "הקונה"} אישר את מסירת הרכב. אנא אשר גם אתה להשלמת העסקה ושחרור הכספים.`,
+        dealId,
+        type: "HANDOVER_UPDATE"
+      })
+    }
+  }
+
+  revalidatePath(`/deals/${dealId}`)
+  revalidatePath("/dashboard")
+  revalidatePath("/lawyer")
+
+  return { success: true, completed: isBothConfirmed }
+}
+
+export async function processRefundAction(dealId: string) {
+  const supabase = await getSupabaseClient()
+  const serviceClient = getServiceRoleClient() as any
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "משתמש לא מחובר" }
+
+  const { data: deal } = await (serviceClient.from("deals") as any)
+    .select("buyer_id, seller_id, title, price_ils")
+    .eq("id", dealId)
+    .maybeSingle()
+
+  if (!deal) return { error: "עסקה לא נמצאה" }
+
+  await (serviceClient.from("deals") as any)
+    .update({
+      status: "CANCELLED",
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", dealId)
+
+  if (deal.buyer_id) {
+    await createNotification({
+      userId: deal.buyer_id,
+      title: "החזר כספי אושר 🔄",
+      message: `עורך הדין אישר את החזר כספי הנאמנות בסך ₪${Number(deal.price_ils).toLocaleString("he-IL")} לחשבונך עבור "${deal.title}".`,
+      dealId,
+      type: "REFUND_PROCESSED"
+    })
+  }
+
+  revalidatePath(`/deals/${dealId}`)
+  revalidatePath("/dashboard")
+  revalidatePath("/lawyer")
+
+  return { success: true }
 }

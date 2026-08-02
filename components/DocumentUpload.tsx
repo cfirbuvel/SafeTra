@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useRef } from "react"
-import { createSupabaseClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Upload, X, CheckCircle2, Loader2 } from "lucide-react"
 
@@ -11,13 +10,69 @@ interface DocumentUploadProps {
     isLoading?: boolean
 }
 
+/**
+ * Downscales large camera photos (> 1MB) on client browser before upload.
+ */
+async function compressImageIfNeeded(file: File): Promise<File> {
+    if (!file.type.startsWith("image/") || file.size < 1024 * 1024) {
+        return file
+    }
+    return new Promise((resolve) => {
+        const img = new Image()
+        const url = URL.createObjectURL(file)
+        img.src = url
+        img.onload = () => {
+            URL.revokeObjectURL(url)
+            const canvas = document.createElement("canvas")
+            const maxDim = 1600
+            let width = img.width
+            let height = img.height
+
+            if (width > maxDim || height > maxDim) {
+                if (width > height) {
+                    height = Math.round((height * maxDim) / width)
+                    width = maxDim
+                } else {
+                    width = Math.round((width * maxDim) / height)
+                    height = maxDim
+                }
+            }
+
+            canvas.width = width
+            canvas.height = height
+            const ctx = canvas.getContext("2d")
+            ctx?.drawImage(img, 0, 0, width, height)
+
+            canvas.toBlob(
+                (blob) => {
+                    if (blob) {
+                        const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, ".jpg"), {
+                            type: "image/jpeg",
+                            lastModified: Date.now(),
+                        })
+                        resolve(compressedFile)
+                    } else {
+                        resolve(file)
+                    }
+                },
+                "image/jpeg",
+                0.8
+            )
+        }
+        img.onerror = () => {
+            URL.revokeObjectURL(url)
+            resolve(file)
+        }
+    })
+}
+
 export function DocumentUpload({ label, onUploadComplete, isLoading: parentLoading }: DocumentUploadProps) {
     const [file, setFile] = useState<File | null>(null)
     const [preview, setPreview] = useState<string | null>(null)
     const [uploading, setUploading] = useState(false)
     const [uploadedUrl, setUploadedUrl] = useState<string | null>(null)
+    const [isDragging, setIsDragging] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
-    const supabase = createSupabaseClient()
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFile = e.target.files?.[0]
@@ -31,25 +86,28 @@ export function DocumentUpload({ label, onUploadComplete, isLoading: parentLoadi
     const uploadFile = async (selectedFile: File) => {
         setUploading(true)
         try {
-            const fileExt = selectedFile.name.split('.').pop()
-            const fileName = `${Math.random()}.${fileExt}`
-            const filePath = `deal-docs/${fileName}`
+            const fileToUpload = await compressImageIfNeeded(selectedFile)
+            const formData = new FormData()
+            formData.append("file", fileToUpload)
 
-            const { data, error } = await supabase.storage
-                .from('documents')
-                .upload(filePath, selectedFile)
+            const res = await fetch("/api/upload", {
+                method: "POST",
+                body: formData,
+            })
 
-            if (error) throw error
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}))
+                throw new Error(errData.error || `Upload failed with status ${res.status}`)
+            }
 
-            const { data: { publicUrl } } = supabase.storage
-                .from('documents')
-                .getPublicUrl(data.path)
-
-            setUploadedUrl(publicUrl)
-            onUploadComplete(publicUrl, selectedFile)
-        } catch (error) {
-            console.error('Error uploading file:', error)
-            alert('שגיאה בהעלאת הקובץ')
+            const data = await res.json()
+            if (data.url) {
+                setUploadedUrl(data.url)
+                onUploadComplete(data.url, fileToUpload)
+            }
+        } catch (error: any) {
+            console.error("Error uploading file:", error)
+            alert(error?.message || "שגיאה בהעלאת הקובץ")
         } finally {
             setUploading(false)
         }
@@ -62,12 +120,59 @@ export function DocumentUpload({ label, onUploadComplete, isLoading: parentLoadi
         if (fileInputRef.current) fileInputRef.current.value = ""
     }
 
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+    }
+
+    const handleDragEnter = (e: React.DragEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+        if (uploading || parentLoading) return
+        setIsDragging(true)
+    }
+
+    const handleDragLeave = (e: React.DragEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setIsDragging(false)
+    }
+
+    const handleDrop = async (e: React.DragEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setIsDragging(false)
+
+        if (uploading || parentLoading) return
+
+        const droppedFile = e.dataTransfer.files?.[0]
+        if (!droppedFile) return
+
+        if (!droppedFile.type.startsWith("image/")) {
+            alert("נא להעלות קבצי תמונה בלבד")
+            return
+        }
+
+        setFile(droppedFile)
+        setPreview(URL.createObjectURL(droppedFile))
+        await uploadFile(droppedFile)
+    }
+
     return (
         <div className="space-y-2">
             <label className="block text-sm font-medium text-foreground">{label}</label>
             <div
-                className={`border-2 border-dashed rounded-lg p-4 transition-colors ${uploadedUrl ? 'border-green-500 bg-green-50/10' : 'border-muted hover:border-primary'
-                    }`}
+                onDragOver={handleDragOver}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`border-2 border-dashed rounded-lg p-4 transition-colors ${
+                    uploadedUrl 
+                        ? 'border-green-500 bg-green-50/10' 
+                        : isDragging
+                        ? 'border-primary bg-primary/10'
+                        : 'border-muted hover:border-primary'
+                }`}
             >
                 {!preview ? (
                     <div className="text-center py-4">

@@ -63,6 +63,10 @@ export default async function DealsPage() {
     redirect("/lawyer")
   }
 
+  if (user.role === "admin") {
+    redirect("/admin")
+  }
+
   const deals = await getUserDeals()
   const userDeals = (deals || []) as Deal[]
 

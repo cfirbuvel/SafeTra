@@ -1,6 +1,3 @@
-
-
-g5566y5789looi0ilkl
 -- 0. Cleanup unused tables
 DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS users CASCADE;
@@ -12,9 +9,18 @@ EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;
 
--- 2. Add role column to profiles if it doesn't exist
-ALTER TABLE profiles 
-ADD COLUMN IF NOT EXISTS role user_role DEFAULT 'user';
+-- 2. Create profiles table if it doesn't exist
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  full_name TEXT,
+  id_number TEXT,
+  email TEXT,
+  phone TEXT,
+  avatar_url TEXT,
+  role user_role DEFAULT 'user'
+);
+
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS role user_role DEFAULT 'user';
 
 -- 3. Update Deal Status Enum
 -- Trying standard snake_case "deal_status" typically used in Postgres
@@ -24,11 +30,10 @@ ALTER TYPE deal_status ADD VALUE IF NOT EXISTS 'ownership_transfer_pending';
 ALTER TYPE deal_status ADD VALUE IF NOT EXISTS 'completed';
 ALTER TYPE deal_status ADD VALUE IF NOT EXISTS 'cancelled';
 
--- (Optional) If we wanted to rename 'FUNDS_RECIEVED' etc, we would handle that, 
--- but simpler to just add the new semantic ones and migrate data if needed.
-
 -- 4. Create RLS Policies for Lawyer Access
--- Allow Lawyers to view ALL profiles
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Lawyers can view all profiles" ON profiles;
 CREATE POLICY "Lawyers can view all profiles"
 ON profiles FOR SELECT
 TO authenticated
@@ -38,10 +43,10 @@ USING (
     SELECT id FROM profiles WHERE role = 'lawyer'
   )
 );
- 
 
 -- Allow Lawyers to view ALL deals
-CREATE POLICY "Lawyers can view all deals"mkn./ knknknkjj knknknk
+DROP POLICY IF EXISTS "Lawyers can view all deals" ON deals;
+CREATE POLICY "Lawyers can view all deals"
 ON deals FOR SELECT
 TO authenticated
 USING (
@@ -51,6 +56,7 @@ USING (
 );
 
 -- Allow Lawyers to update ALL deals
+DROP POLICY IF EXISTS "Lawyers can update all deals" ON deals;
 CREATE POLICY "Lawyers can update all deals"
 ON deals FOR UPDATE
 TO authenticated

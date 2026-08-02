@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 import { getDealById, updateDealStatus, approveDeal, rejectDeal } from "@/lib/actions/deals"
 import { InviteBuyerForm } from "./InviteBuyerForm"
+import { EscrowVaultWidget } from "@/components/EscrowVaultWidget"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -54,7 +55,7 @@ export default async function DealPage({ params }: DealPageProps) {
     getCurrentUser()
   ])
 
-  if (user?.role === "lawyer") {
+  if (user?.role === "lawyer" || user?.role === "admin") {
     redirect(`/lawyer/${id}`)
   }
 
@@ -159,6 +160,8 @@ export default async function DealPage({ params }: DealPageProps) {
               </div>
             </div>
           </Card>
+
+          <EscrowVaultWidget deal={deal} currentUserId={user.id} />
 
           {!["EXPIRED", "COMPLETED", "CANCELLED"].includes(deal.status) && user?.id === deal.seller_id && (
             <InviteBuyerForm dealId={deal.id} />

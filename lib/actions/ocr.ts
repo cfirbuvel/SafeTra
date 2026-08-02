@@ -29,7 +29,7 @@ export async function processDocumentAction(formData: FormData): Promise<{ data?
             }
         )
         const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return { error: "Unauthorized" }
+        const userId = user ? user.id : "anonymous_user"
 
         // 2. Conversion & OCR
         const bytes = await file.arrayBuffer()
@@ -39,15 +39,12 @@ export async function processDocumentAction(formData: FormData): Promise<{ data?
         console.log("--- OCR RAW START ---")
         console.log(text)
         console.log("--- OCR RAW END ---")
-        console.log(`[DEBUG] OCR Mean Confidence: ${confidence}%`)
 
         // 3. Classification
         const docType = classifyDocument(text)
-        console.log(`[DEBUG] Detected Document Type: ${docType}`)
 
         // 4. Extraction
         const fields = extractFields(text, docType)
-        console.log("[DEBUG] Extracted Fields:", JSON.stringify(fields, null, 2))
 
         // 5. Fraud Detection
         const fraudSignals = detectFraud({
@@ -58,7 +55,7 @@ export async function processDocumentAction(formData: FormData): Promise<{ data?
         })
 
         // 6. Security: Private Storage upload
-        const storagePath = await uploadPrivateDocument(file, user.id)
+        const storagePath = await uploadPrivateDocument(file, userId)
 
         const result: OCRResult = {
             rawText: text,
@@ -69,14 +66,47 @@ export async function processDocumentAction(formData: FormData): Promise<{ data?
             storagePath
         }
 
-        console.log("--- DOCUMENT INTELLIGENCE REPORT START ---")
-        console.log(JSON.stringify(result, null, 2))
-        console.log("--- DOCUMENT INTELLIGENCE REPORT END ---")
-
         return { data: result }
 
     } catch (e: any) {
         console.error("OCR Server Action Error:", e)
         return { error: e.message || "Failed to process document" }
+    }
+}
+
+/**
+ * Server Action to upload a document to private storage using service role client, returning the public URL.
+ */
+export async function uploadDocumentAction(formData: FormData): Promise<{ url?: string; error?: string }> {
+    try {
+        const file = formData.get("file") as File
+        if (!file) return { error: "No file provided" }
+
+        // 1. Auth check
+        const cookieStore = await cookies()
+        const supabase = createServerClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+            {
+                cookies: {
+                    getAll() { return cookieStore.getAll() },
+                },
+            }
+        )
+        const { data: { user } } = await supabase.auth.getUser()
+        const userId = user ? user.id : "guest_user"
+
+        // 2. Upload using private/service role client
+        const path = await uploadPrivateDocument(file, userId)
+
+        // Get public URL
+        const { data } = supabase.storage
+            .from("documents")
+            .getPublicUrl(path)
+
+        return { url: data?.publicUrl || `/uploads/${path}` }
+    } catch (e: any) {
+        console.error("Upload Server Action Error:", e)
+        return { error: e.message || "Failed to upload document" }
     }
 }
