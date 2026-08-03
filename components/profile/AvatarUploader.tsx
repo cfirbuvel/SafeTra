@@ -49,7 +49,7 @@ export function AvatarUploader({ currentAvatarUrl, fullName, onAvatarChange }: A
                 onAvatarChange(data.url)
             } else {
                 console.error("Upload error:", data.error)
-                setPreviewUrl(null) // Reset on failure
+                setPreviewUrl(null)
             }
         } catch (error) {
             console.error("Failed to upload avatar:", error)
@@ -62,19 +62,19 @@ export function AvatarUploader({ currentAvatarUrl, fullName, onAvatarChange }: A
     return (
         <div className="flex flex-col items-center gap-3">
             <div
-                className="relative cursor-pointer group rounded-full p-1 ring-2 ring-primary/20 hover:ring-primary/50 transition-all duration-200"
+                className="relative cursor-pointer group rounded-full p-1 border-2 border-emerald-400/80 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_25px_rgba(16,185,129,0.5)] transition-all duration-300"
                 onClick={() => fileInputRef.current?.click()}
             >
                 <Avatar className="h-24 w-24">
                     <AvatarImage src={displayUrl} alt={fullName || "User avatar"} className="object-cover" />
-                    <AvatarFallback className="bg-primary/10 text-primary text-xl font-bold">
+                    <AvatarFallback className="bg-emerald-950 text-emerald-400 text-xl font-bold font-rubik">
                         {initials}
                     </AvatarFallback>
                 </Avatar>
 
-                <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 backdrop-blur-xs">
                     {uploading ? (
-                        <Loader2 className="h-6 w-6 text-white animate-spin" />
+                        <Loader2 className="h-6 w-6 text-emerald-400 animate-spin" />
                     ) : (
                         <Camera className="h-6 w-6 text-white" />
                     )}
@@ -92,7 +92,7 @@ export function AvatarUploader({ currentAvatarUrl, fullName, onAvatarChange }: A
 
             <button
                 type="button"
-                className="text-xs text-primary font-medium hover:underline focus:outline-none"
+                className="text-xs text-emerald-400 font-medium hover:underline focus:outline-none flex items-center gap-1"
                 onClick={() => fileInputRef.current?.click()}
             >
                 {uploading ? "מעלה תמונה..." : "שינוי תמונת פרופיל"}

@@ -8,7 +8,21 @@ import { AvatarUploader } from "@/components/profile/AvatarUploader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Lock, Mail, Phone, ShieldCheck, Loader2, CheckCircle2, AlertCircle } from "lucide-react"
+import {
+    Lock,
+    Mail,
+    Phone,
+    ShieldCheck,
+    Loader2,
+    CheckCircle2,
+    AlertCircle,
+    FileCheck,
+    UploadCloud,
+    User,
+    Info,
+    Smartphone,
+    Clock
+} from "lucide-react"
 
 interface ProfileFormProps {
     user: any
@@ -34,6 +48,10 @@ export function ProfileForm({ user }: ProfileFormProps) {
     const [codeSent, setCodeSent] = useState(false)
     const [otpCode, setOtpCode] = useState("")
     const [verifiedContact, setVerifiedContact] = useState<{ type: "email" | "phone"; value: string } | null>(null)
+
+    // ID Document Upload simulation state
+    const [idDocUploading, setIdDocUploading] = useState(false)
+    const [idDocSaved, setIdDocSaved] = useState(false)
 
     // Alert feedback
     const [successMessage, setSuccessMessage] = useState<string | null>(null)
@@ -73,6 +91,35 @@ export function ProfileForm({ user }: ProfileFormProps) {
         setVerificationLoading(false)
     }
 
+    const handleIdDocUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+
+        setIdDocUploading(true)
+        setError(null)
+
+        try {
+            const formData = new FormData()
+            formData.append("file", file)
+
+            const res = await fetch("/api/upload", {
+                method: "POST",
+                body: formData,
+            })
+
+            if (res.ok) {
+                setIdDocSaved(true)
+                setSuccessMessage("מסמך הזיהוי הועלה ונשלח לבדיקת מערכת")
+            } else {
+                setError("שגיאה בהעלאת מסמך הזיהוי")
+            }
+        } catch (err) {
+            setError("שגיאה בהעלאת המסמך")
+        } finally {
+            setIdDocUploading(false)
+        }
+    }
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         setLoading(true)
@@ -107,187 +154,80 @@ export function ProfileForm({ user }: ProfileFormProps) {
         setLoading(false)
     }
 
-    // Displays real email vs shadow email
     const isShadowEmail = user.isShadowEmail
     const displayEmail = verifiedContact?.type === "email" ? verifiedContact.value : (isShadowEmail ? "לא הוגדר (התחברות טלפונית)" : (user.email || ""))
     const displayPhone = verifiedContact?.type === "phone" ? verifiedContact.value : (user.phone || "לא הוגדר")
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Avatar section */}
-            <div className="py-2 flex justify-center">
+        <form onSubmit={handleSubmit} className="space-y-6 text-slate-100">
+            {/* Profile Avatar Header */}
+            <div className="py-4 flex flex-col items-center gap-2">
                 <AvatarUploader
                     currentAvatarUrl={avatarUrl}
                     fullName={fullName}
                     onAvatarChange={(newUrl) => {
                         setAvatarUrl(newUrl)
-                        setSuccessMessage("תמונת הפרופיל עודכנה. לחץ על 'שמור שינויים' כדי לשמור באופן קבוע.")
+                        setSuccessMessage("תמונת הפרופיל עודכנה. לחץ על 'שמור שינויים' כדי לחולל עדכון קבוע.")
                     }}
                 />
             </div>
 
-            {/* Personal info fields */}
-            <div className="space-y-4">
-                <div className="space-y-2">
-                    <Label htmlFor="fullName" className="text-slate-700 font-medium">שם מלא</Label>
-                    <Input
-                        id="fullName"
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        placeholder="ישראל ישראלי"
-                        required
-                        className="h-11"
+            {/* Section 1: Identity Verification (Stitch Screen 1) */}
+            <div className="rounded-xl p-5 border border-white/10 bg-slate-900/60 backdrop-blur-xl space-y-4 shadow-lg">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <div className="p-2 bg-amber-500/10 text-amber-400 rounded-lg border border-amber-500/20">
+                            <FileCheck className="h-5 w-5" />
+                        </div>
+                        <h3 className="text-lg font-bold font-rubik text-slate-100">אימות זהות</h3>
+                    </div>
+                    <div className="px-3 py-1 bg-amber-500/10 border border-amber-500/30 rounded-md flex items-center gap-1.5 text-xs text-amber-400 font-medium">
+                        <Clock className="h-3.5 w-3.5" />
+                        <span>{idDocSaved ? "בבדיקה" : "ממתין להעלאה"}</span>
+                    </div>
+                </div>
+
+                <p className="text-sm text-slate-400 leading-relaxed">
+                    על מנת להבטיח את סביבת העסקאות, אנו דורשים אימות מזהה ממשלתי (תעודת זהות או דרכון).
+                </p>
+
+                <label className="border-2 border-dashed border-emerald-400/40 hover:border-emerald-400 bg-emerald-500/5 hover:bg-emerald-500/10 rounded-xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all duration-200">
+                    <input
+                        type="file"
+                        accept="image/png, image/jpeg, application/pdf"
+                        className="hidden"
+                        onChange={handleIdDocUpload}
+                        disabled={idDocUploading}
                     />
+                    {idDocUploading ? (
+                        <Loader2 className="h-8 w-8 text-emerald-400 animate-spin" />
+                    ) : idDocSaved ? (
+                        <CheckCircle2 className="h-8 w-8 text-emerald-400" />
+                    ) : (
+                        <UploadCloud className="h-8 w-8 text-emerald-400" />
+                    )}
+                    <span className="text-sm font-semibold text-emerald-400">
+                        {idDocUploading ? "מעלה מסמך..." : idDocSaved ? "מסמך הועלה בהצלחה" : "לחץ להעלאת מסמך או גרור לכאן"}
+                    </span>
+                    <span className="text-xs text-slate-500">JPG, PNG או PDF (עד 5MB)</span>
+                </label>
+            </div>
+
+            {/* Section 2: Phone & Contact Verification (Stitch Screen 2) */}
+            <div className="rounded-xl p-5 border border-white/10 bg-slate-900/60 backdrop-blur-xl space-y-4 shadow-lg border-r-4 border-r-amber-500">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <div className="p-2 bg-amber-500/10 text-amber-400 rounded-lg border border-amber-500/20">
+                            <Smartphone className="h-5 w-5" />
+                        </div>
+                        <h3 className="text-lg font-bold font-rubik text-slate-100">אימות טלפון ודוא״ל</h3>
+                    </div>
                 </div>
 
+                {/* Phone row */}
                 <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                        <Label htmlFor="teudatZehut" className="text-slate-700 font-medium">מספר תעודת זהות</Label>
-                        {isIdLocked && (
-                            <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                <Lock className="h-3 w-3 text-amber-600" />
-                                נעול מטעמי אבטחה
-                            </span>
-                        )}
-                    </div>
-                    <div className="relative">
-                        <Input
-                            id="teudatZehut"
-                            value={teudatZehut}
-                            onChange={(e) => setTeudatZehut(e.target.value)}
-                            placeholder="123456789"
-                            disabled={isIdLocked}
-                            className={`h-11 ${isIdLocked ? "bg-slate-100/80 text-slate-500 font-mono cursor-not-allowed" : ""}`}
-                        />
-                        {isIdLocked && (
-                            <Lock className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
-                        )}
-                    </div>
-                </div>
-
-                {/* Email Section */}
-                <div className="space-y-2 pt-2 border-t border-slate-100">
-                    <div className="flex items-center justify-between">
-                        <Label className="text-slate-700 font-medium flex items-center gap-2">
-                            <Mail className="h-4 w-4 text-slate-400" />
-                            כתובת דוא״ל
-                        </Label>
-                        {isEditingContact !== "email" && (
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="text-xs text-primary h-8 hover:bg-primary/5"
-                                onClick={() => {
-                                    setIsEditingContact("email")
-                                    setNewContactValue("")
-                                    setCodeSent(false)
-                                    setError(null)
-                                }}
-                            >
-                                עדכן מייל
-                            </Button>
-                        )}
-                    </div>
-
-                    {isEditingContact === "email" ? (
-                        <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
-                            <Label htmlFor="newEmail" className="text-xs font-medium text-slate-600">
-                                הזן כתובת דוא״ל חדשה לאימות
-                            </Label>
-                            <div className="flex gap-2">
-                                <Input
-                                    id="newEmail"
-                                    type="email"
-                                    placeholder="example@domain.com"
-                                    value={newContactValue}
-                                    onChange={(e) => setNewContactValue(e.target.value)}
-                                    disabled={codeSent || verificationLoading}
-                                    className="h-10 text-sm"
-                                />
-                                {!codeSent ? (
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        onClick={handleSendCode}
-                                        disabled={!newContactValue.includes("@") || verificationLoading}
-                                    >
-                                        {verificationLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "שלח קוד"}
-                                    </Button>
-                                ) : (
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setCodeSent(false)}
-                                    >
-                                        שינוי
-                                    </Button>
-                                )}
-                            </div>
-
-                            {codeSent && (
-                                <div className="space-y-2 pt-2">
-                                    <Label className="text-xs text-slate-600">קוד אימות (6 ספרות שנשלח במייל)</Label>
-                                    <div className="flex gap-2">
-                                        <Input
-                                            maxLength={6}
-                                            placeholder="000000"
-                                            className="text-center font-mono tracking-widest h-10"
-                                            value={otpCode}
-                                            onChange={(e) => setOtpCode(e.target.value)}
-                                        />
-                                        <Button
-                                            type="button"
-                                            size="sm"
-                                            onClick={handleVerifyCode}
-                                            disabled={otpCode.length < 6 || verificationLoading}
-                                        >
-                                            {verificationLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "אמת"}
-                                        </Button>
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="flex justify-end">
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-xs text-muted-foreground"
-                                    onClick={() => {
-                                        setIsEditingContact("none")
-                                        setCodeSent(false)
-                                    }}
-                                >
-                                    ביטול
-                                </Button>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="flex items-center justify-between p-3 bg-slate-50/60 rounded-md border border-slate-200/60">
-                            <span className="text-sm font-medium text-slate-700">{displayEmail}</span>
-                            {verifiedContact?.type === "email" ? (
-                                <span className="text-xs text-emerald-600 font-bold flex items-center gap-1">
-                                    <ShieldCheck className="h-3.5 w-3.5" />
-                                    אומת מחדש
-                                </span>
-                            ) : (
-                                !isShadowEmail && (
-                                    <span className="text-xs text-slate-400 flex items-center gap-1">
-                                        <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
-                                        מאומת
-                                    </span>
-                                )
-                            )}
-                        </div>
-                    )}
-                </div>
-
-                {/* Phone Section */}
-                <div className="space-y-2 pt-2 border-t border-slate-100">
-                    <div className="flex items-center justify-between">
-                        <Label className="text-slate-700 font-medium flex items-center gap-2">
+                        <Label className="text-sm text-slate-300 font-medium flex items-center gap-1.5">
                             <Phone className="h-4 w-4 text-slate-400" />
                             מספר טלפון
                         </Label>
@@ -296,7 +236,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                className="text-xs text-primary h-8 hover:bg-primary/5"
+                                className="text-xs text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 h-7"
                                 onClick={() => {
                                     setIsEditingContact("phone")
                                     setNewContactValue("")
@@ -310,8 +250,8 @@ export function ProfileForm({ user }: ProfileFormProps) {
                     </div>
 
                     {isEditingContact === "phone" ? (
-                        <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
-                            <Label htmlFor="newPhone" className="text-xs font-medium text-slate-600">
+                        <div className="p-4 bg-slate-950/70 rounded-lg border border-slate-800 space-y-3">
+                            <Label htmlFor="newPhone" className="text-xs text-slate-400">
                                 הזן מספר טלפון חדש לאימות (SMS)
                             </Label>
                             <div className="flex gap-2">
@@ -322,7 +262,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                                     value={newContactValue}
                                     onChange={(e) => setNewContactValue(e.target.value)}
                                     disabled={codeSent || verificationLoading}
-                                    className="h-10 text-sm"
+                                    className="bg-slate-900 border-slate-800 text-slate-100 h-10"
                                 />
                                 {!codeSent ? (
                                     <Button
@@ -330,6 +270,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                                         size="sm"
                                         onClick={handleSendCode}
                                         disabled={newContactValue.length < 9 || verificationLoading}
+                                        className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold"
                                     >
                                         {verificationLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "שלח קוד"}
                                     </Button>
@@ -339,6 +280,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                                         variant="outline"
                                         size="sm"
                                         onClick={() => setCodeSent(false)}
+                                        className="border-slate-700 text-slate-300"
                                     >
                                         שינוי
                                     </Button>
@@ -347,12 +289,12 @@ export function ProfileForm({ user }: ProfileFormProps) {
 
                             {codeSent && (
                                 <div className="space-y-2 pt-2">
-                                    <Label className="text-xs text-slate-600">קוד אימות (6 ספרות שנשלח ב-SMS)</Label>
+                                    <Label className="text-xs text-slate-400">קוד אימות (6 ספרות שנשלח ב-SMS)</Label>
                                     <div className="flex gap-2">
                                         <Input
                                             maxLength={6}
                                             placeholder="000000"
-                                            className="text-center font-mono tracking-widest h-10"
+                                            className="text-center font-mono tracking-widest bg-slate-900 border-slate-800 text-emerald-400 text-lg h-11"
                                             value={otpCode}
                                             onChange={(e) => setOtpCode(e.target.value)}
                                         />
@@ -361,6 +303,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                                             size="sm"
                                             onClick={handleVerifyCode}
                                             disabled={otpCode.length < 6 || verificationLoading}
+                                            className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold"
                                         >
                                             {verificationLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "אמת"}
                                         </Button>
@@ -373,7 +316,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                                     type="button"
                                     variant="ghost"
                                     size="sm"
-                                    className="text-xs text-muted-foreground"
+                                    className="text-xs text-slate-400"
                                     onClick={() => {
                                         setIsEditingContact("none")
                                         setCodeSent(false)
@@ -384,17 +327,139 @@ export function ProfileForm({ user }: ProfileFormProps) {
                             </div>
                         </div>
                     ) : (
-                        <div className="flex items-center justify-between p-3 bg-slate-50/60 rounded-md border border-slate-200/60">
-                            <span className="text-sm font-medium text-slate-700 font-mono">{displayPhone}</span>
+                        <div className="flex items-center justify-between p-3 bg-slate-950/60 rounded-lg border border-slate-800">
+                            <span className="text-sm font-mono text-slate-200">{displayPhone}</span>
                             {verifiedContact?.type === "phone" ? (
-                                <span className="text-xs text-emerald-600 font-bold flex items-center gap-1">
+                                <span className="text-xs text-emerald-400 font-bold flex items-center gap-1">
                                     <ShieldCheck className="h-3.5 w-3.5" />
                                     אומת מחדש
                                 </span>
                             ) : (
                                 user.phone && (
                                     <span className="text-xs text-slate-400 flex items-center gap-1">
-                                        <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
+                                        <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+                                        מאומת
+                                    </span>
+                                )
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* Email row */}
+                <div className="space-y-2 pt-2 border-t border-white/5">
+                    <div className="flex items-center justify-between">
+                        <Label className="text-sm text-slate-300 font-medium flex items-center gap-1.5">
+                            <Mail className="h-4 w-4 text-slate-400" />
+                            כתובת דוא״ל
+                        </Label>
+                        {isEditingContact !== "email" && (
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="text-xs text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 h-7"
+                                onClick={() => {
+                                    setIsEditingContact("email")
+                                    setNewContactValue("")
+                                    setCodeSent(false)
+                                    setError(null)
+                                }}
+                            >
+                                עדכן מייל
+                            </Button>
+                        )}
+                    </div>
+
+                    {isEditingContact === "email" ? (
+                        <div className="p-4 bg-slate-950/70 rounded-lg border border-slate-800 space-y-3">
+                            <Label htmlFor="newEmail" className="text-xs text-slate-400">
+                                הזן כתובת דוא״ל חדשה לאימות
+                            </Label>
+                            <div className="flex gap-2">
+                                <Input
+                                    id="newEmail"
+                                    type="email"
+                                    placeholder="example@domain.com"
+                                    value={newContactValue}
+                                    onChange={(e) => setNewContactValue(e.target.value)}
+                                    disabled={codeSent || verificationLoading}
+                                    className="bg-slate-900 border-slate-800 text-slate-100 h-10"
+                                />
+                                {!codeSent ? (
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        onClick={handleSendCode}
+                                        disabled={!newContactValue.includes("@") || verificationLoading}
+                                        className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold"
+                                    >
+                                        {verificationLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "שלח קוד"}
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setCodeSent(false)}
+                                        className="border-slate-700 text-slate-300"
+                                    >
+                                        שינוי
+                                    </Button>
+                                )}
+                            </div>
+
+                            {codeSent && (
+                                <div className="space-y-2 pt-2">
+                                    <Label className="text-xs text-slate-400">קוד אימות (6 ספרות שנשלח במייל)</Label>
+                                    <div className="flex gap-2">
+                                        <Input
+                                            maxLength={6}
+                                            placeholder="000000"
+                                            className="text-center font-mono tracking-widest bg-slate-900 border-slate-800 text-emerald-400 text-lg h-11"
+                                            value={otpCode}
+                                            onChange={(e) => setOtpCode(e.target.value)}
+                                        />
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            onClick={handleVerifyCode}
+                                            disabled={otpCode.length < 6 || verificationLoading}
+                                            className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold"
+                                        >
+                                            {verificationLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "אמת"}
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex justify-end">
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-xs text-slate-400"
+                                    onClick={() => {
+                                        setIsEditingContact("none")
+                                        setCodeSent(false)
+                                    }}
+                                >
+                                    ביטול
+                                </Button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex items-center justify-between p-3 bg-slate-950/60 rounded-lg border border-slate-800">
+                            <span className="text-sm text-slate-200" dir="ltr">{displayEmail}</span>
+                            {verifiedContact?.type === "email" ? (
+                                <span className="text-xs text-emerald-400 font-bold flex items-center gap-1">
+                                    <ShieldCheck className="h-3.5 w-3.5" />
+                                    אומת מחדש
+                                </span>
+                            ) : (
+                                !isShadowEmail && (
+                                    <span className="text-xs text-slate-400 flex items-center gap-1">
+                                        <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
                                         מאומת
                                     </span>
                                 )
@@ -404,17 +469,71 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 </div>
             </div>
 
+            {/* Section 3: Personal Details (Stitch Screen 3) */}
+            <div className="rounded-xl p-5 border border-white/10 bg-slate-900/60 backdrop-blur-xl space-y-4 shadow-lg border-r-4 border-r-emerald-500">
+                <div className="flex items-center gap-2">
+                    <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg border border-emerald-500/20">
+                        <User className="h-5 w-5" />
+                    </div>
+                    <h3 className="text-lg font-bold font-rubik text-slate-100">פרטים אישיים</h3>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="fullName" className="text-xs text-slate-400 font-medium">שם מלא</Label>
+                        <Input
+                            id="fullName"
+                            value={fullName}
+                            onChange={(e) => setFullName(e.target.value)}
+                            placeholder="ישראל ישראלי"
+                            required
+                            className="bg-slate-950/60 border-slate-800 text-slate-100 h-11 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                            <Label htmlFor="teudatZehut" className="text-xs text-slate-400 font-medium">מספר תעודת זהות</Label>
+                            {isIdLocked && (
+                                <span className="text-[11px] text-amber-400 flex items-center gap-1 font-medium">
+                                    <Lock className="h-3 w-3" />
+                                    נעול מטעמי אבטחה
+                                </span>
+                            )}
+                        </div>
+                        <div className="relative">
+                            <Input
+                                id="teudatZehut"
+                                value={teudatZehut}
+                                onChange={(e) => setTeudatZehut(e.target.value)}
+                                placeholder="123456789"
+                                disabled={isIdLocked}
+                                className={`h-11 font-mono ${isIdLocked ? "bg-slate-950/80 text-slate-500 border-slate-800 cursor-not-allowed" : "bg-slate-950/60 border-slate-800 text-slate-100"}`}
+                            />
+                            {isIdLocked && (
+                                <Lock className="absolute left-3 top-3.5 h-4 w-4 text-slate-600" />
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                <p className="text-xs text-slate-500 flex items-center gap-1.5 pt-1">
+                    <Info className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                    <span>פרטי תעודת הזהות ניתנים לעריכה דרך תמיכת הלקוחות בלבד מטעמי אבטחה ויושרה משפטית.</span>
+                </p>
+            </div>
+
             {/* Error / Success Feedback */}
             {error && (
-                <div className="p-3 bg-destructive/10 text-destructive text-sm rounded-lg flex items-center gap-2">
+                <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg flex items-center gap-2">
                     <AlertCircle className="h-4 w-4 shrink-0" />
                     <span>{error}</span>
                 </div>
             )}
 
             {successMessage && (
-                <div className="p-3 bg-emerald-50 text-emerald-700 text-sm rounded-lg flex items-center gap-2 border border-emerald-200">
-                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm rounded-lg flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
                     <span>{successMessage}</span>
                 </div>
             )}
@@ -422,7 +541,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
             {/* Save Button */}
             <Button
                 type="submit"
-                className="w-full h-12 text-base font-bold shadow-md transition-all hover:shadow-lg"
+                className="w-full h-12 text-base font-bold bg-emerald-500 hover:bg-emerald-600 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.25)] transition-all hover:shadow-[0_0_25px_rgba(16,185,129,0.4)]"
                 disabled={loading}
             >
                 {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : "שמור שינויים"}
