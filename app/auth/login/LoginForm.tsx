@@ -15,10 +15,12 @@ export default function LoginForm() {
     setLoading(true)
     setError(null)
 
+    const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: `${location.origin}/auth/callback`,
+        redirectTo: `${origin}/auth/callback`,
       },
     })
 

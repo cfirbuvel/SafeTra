@@ -56,8 +56,8 @@ function LoginForm() {
     setIsLoading(true)
     setError("")
 
-    // Construct the redirect URL with the 'next' parameter
-    const redirectTo = new URL(`${location.origin}/auth/callback`)
+    const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"
+    const redirectTo = new URL(`${origin}/auth/callback`)
     if (next) {
       redirectTo.searchParams.set("next", next)
     }
