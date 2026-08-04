@@ -23,9 +23,10 @@ BEGIN
       new.id,
       COALESCE(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'name', 'New User'),
       new.email,
-      new.raw_user_meta_data->>'avatar_url'
+      COALESCE(new.raw_user_meta_data->>'avatar_url', new.raw_user_meta_data->>'picture')
     )
-    ON CONFLICT (id) DO NOTHING;
+    ON CONFLICT (id) DO UPDATE SET
+      avatar_url = COALESCE(public.profiles.avatar_url, EXCLUDED.avatar_url, new.raw_user_meta_data->>'avatar_url', new.raw_user_meta_data->>'picture');
   EXCEPTION WHEN OTHERS THEN
     -- Fallback warning logging to prevent auth block
     RAISE WARNING 'Failed to create profile: %', SQLERRM;

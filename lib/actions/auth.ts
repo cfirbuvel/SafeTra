@@ -247,11 +247,21 @@ export async function getCurrentUser() {
 
     if (!profile) return authUser
 
-    // Check if the current email is a shadow email
-    const isShadowEmail = profile.email?.endsWith("@autotrust-demo.com")
+    // Extract avatar URL: Prioritize DB URL if set, otherwise Google OAuth metadata
+    const googleAvatar = authUser.user_metadata?.avatar_url || authUser.user_metadata?.picture || null
+    const image = profile?.avatar_url || googleAvatar || null
 
-    // Extract avatar URL: Prioritize persistent DB URL, then session metadata
-    const image = profile?.avatar_url || authUser.user_metadata?.avatar_url || authUser.user_metadata?.picture || null
+    // If profile in DB doesn't have an avatar_url yet but Google avatar exists, auto-sync it to DB
+    if (profile && !profile.avatar_url && googleAvatar) {
+      try {
+        const serviceClient = getServiceRoleClient()
+        await (serviceClient.from("profiles") as any)
+          .update({ avatar_url: googleAvatar })
+          .eq("id", authUser.id)
+      } catch (e) {
+        console.error("Failed to auto-sync Google avatar to profile:", e)
+      }
+    }
 
     // Return a merged object
     return {
