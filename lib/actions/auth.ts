@@ -247,6 +247,9 @@ export async function getCurrentUser() {
 
     if (!profile) return authUser
 
+    // Check if the current email is a shadow email
+    const isShadowEmail = profile.email?.endsWith("@autotrust-demo.com")
+
     // Extract avatar URL: Prioritize DB URL if set, otherwise Google OAuth metadata
     const googleAvatar = authUser.user_metadata?.avatar_url || authUser.user_metadata?.picture || null
     const image = profile?.avatar_url || googleAvatar || null
