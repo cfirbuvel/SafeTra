@@ -2,7 +2,7 @@ import { createWorker } from "tesseract.js"
 
 /**
  * Executes OCR on an image file buffer.
- * Uses require.resolve to reliably locate the absolute workerPath in both local dev and serverless environments.
+ * Uses require.resolve to reliably locate workerPath and configures tessdata CDN for Hebrew & English models.
  */
 export async function runOCR(imageBuffer: Buffer): Promise<{ text: string; confidence: number }> {
     return new Promise(async (resolve) => {
@@ -12,17 +12,17 @@ export async function runOCR(imageBuffer: Buffer): Promise<{ text: string; confi
         const timeout = setTimeout(async () => {
             if (!isCompleted) {
                 isCompleted = true;
-                console.warn("[OCR] Timeout reached (20s). Returning fast response.");
+                console.warn("[OCR] Timeout reached (25s). Returning fast response.");
                 if (worker) {
                     try { await worker.terminate(); } catch (e) {}
                 }
                 resolve({ text: "", confidence: 50 });
             }
-        }, 20000);
+        }, 25000);
 
         try {
             const options: any = {
-                gzip: false,
+                langPath: "https://tessdata.projectnaptha.com/4.0.0",
                 errorHandler: (err: any) => console.error("[OCR Worker Error]:", err)
             };
 
@@ -43,7 +43,9 @@ export async function runOCR(imageBuffer: Buffer): Promise<{ text: string; confi
 
             const res = await worker.recognize(imageBuffer);
             const text = res?.data?.text || "";
-            const confidence = res?.data?.confidence || 70;
+            const confidence = Math.round(res?.data?.confidence || 70);
+
+            console.log(`[OCR Success] Recognized ${text.length} characters with ${confidence}% confidence.`);
 
             if (!isCompleted) {
                 isCompleted = true;
