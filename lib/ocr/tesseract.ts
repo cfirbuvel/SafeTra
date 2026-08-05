@@ -2,7 +2,7 @@ import { createWorker } from "tesseract.js"
 
 /**
  * Executes OCR on an image file buffer.
- * Uses require.resolve to reliably locate workerPath and configures tessdata CDN for Hebrew & English models.
+ * Configures tessdata CDN for Hebrew & English language models.
  */
 export async function runOCR(imageBuffer: Buffer): Promise<{ text: string; confidence: number }> {
     return new Promise(async (resolve) => {
@@ -25,15 +25,6 @@ export async function runOCR(imageBuffer: Buffer): Promise<{ text: string; confi
                 langPath: "https://tessdata.projectnaptha.com/4.0.0",
                 errorHandler: (err: any) => console.error("[OCR Worker Error]:", err)
             };
-
-            try {
-                const resolvedWorkerPath = require.resolve("tesseract.js/src/worker-script/node/index.js");
-                if (resolvedWorkerPath) {
-                    options.workerPath = resolvedWorkerPath;
-                }
-            } catch (resolveErr) {
-                console.warn("[OCR] require.resolve for workerPath failed, using default:", resolveErr);
-            }
 
             worker = await createWorker(["heb", "eng"], 1, options);
 
