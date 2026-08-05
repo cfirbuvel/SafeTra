@@ -124,10 +124,8 @@ export async function updateUserProfile(data: {
         profileUpdate.city = data.address.trim()
     }
 
-    const currentId = existingProfile?.id_number || existingProfile?.teudat_zehut
     if (data.teudatZehut && data.teudatZehut.trim()) {
         profileUpdate.id_number = data.teudatZehut.trim()
-        profileUpdate.teudat_zehut = data.teudatZehut.trim()
     }
 
     // Upsert into public.profiles
