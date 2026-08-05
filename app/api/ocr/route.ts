@@ -36,8 +36,17 @@ export async function POST(request: Request) {
         const bytes = await file.arrayBuffer()
         const buffer = Buffer.from(bytes)
 
-        // OCR Execution
-        const { text, confidence } = await runOCR(buffer)
+        // OCR Execution (Safe fallback if serverless environment blocks worker threads)
+        let text = ""
+        let confidence = 0
+        try {
+            const ocrRes = await runOCR(buffer)
+            text = ocrRes.text
+            confidence = ocrRes.confidence
+        } catch (ocrError) {
+            console.error("Serverless OCR execution error:", ocrError)
+        }
+
         console.log("--- OCR RAW START ---")
         console.log(text)
         console.log("--- OCR RAW END ---")

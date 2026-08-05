@@ -1,9 +1,10 @@
 import { createWorker } from "tesseract.js"
 import path from "path"
+import fs from "fs"
 
 /**
  * Executes OCR on an image file buffer.
- * Uses physical disk path for workerPath to ensure compatibility with Next.js bundling on Windows.
+ * Safely resolves workerPath in both local environment and Vercel serverless functions.
  */
 export async function runOCR(imageBuffer: Buffer): Promise<{ text: string; confidence: number }> {
     return new Promise(async (resolve) => {
@@ -22,23 +23,26 @@ export async function runOCR(imageBuffer: Buffer): Promise<{ text: string; confi
         }, 20000);
 
         try {
-            const langPath = process.cwd()
-            const workerPath = path.join(process.cwd(), "node_modules", "tesseract.js", "src", "worker-script", "node", "index.js")
-
-            worker = await createWorker(["heb", "eng"], 1, {
-                workerPath: workerPath,
-                langPath: langPath,
+            const options: any = {
                 gzip: false,
                 errorHandler: (err: any) => console.error("[OCR Worker Error]:", err)
-            })
+            };
+
+            // Only specify explicit filesystem workerPath if the file physically exists (e.g. local dev)
+            const localWorkerPath = path.join(process.cwd(), "node_modules", "tesseract.js", "src", "worker-script", "node", "index.js");
+            if (fs.existsSync(localWorkerPath)) {
+                options.workerPath = localWorkerPath;
+            }
+
+            worker = await createWorker(["heb", "eng"], 1, options);
 
             await worker.setParameters({
-                tessedit_pageseg_mode: "11" as any, // 11 = Sparse text: find as much text as possible in no particular order
-            })
+                tessedit_pageseg_mode: "11" as any, // 11 = Sparse text
+            });
 
-            const res = await worker.recognize(imageBuffer)
-            const text = res?.data?.text || ""
-            const confidence = res?.data?.confidence || 70
+            const res = await worker.recognize(imageBuffer);
+            const text = res?.data?.text || "";
+            const confidence = res?.data?.confidence || 70;
 
             if (!isCompleted) {
                 isCompleted = true;
@@ -47,7 +51,7 @@ export async function runOCR(imageBuffer: Buffer): Promise<{ text: string; confi
                 resolve({ text, confidence });
             }
         } catch (err: any) {
-            console.error("Tesseract OCR Execution Exception:", err)
+            console.error("Tesseract OCR Execution Exception:", err);
             if (!isCompleted) {
                 isCompleted = true;
                 clearTimeout(timeout);
