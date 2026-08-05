@@ -30,7 +30,7 @@ export function GlobalRealtimeListener({ userId, role }: GlobalRealtimeListenerP
                     table: "notifications",
                     filter: `user_id=eq.${userId}`,
                 },
-                (payload) => {
+                (payload: any) => {
                     const newNotif = payload.new as any
                     console.log("[Realtime Notification Received]:", newNotif)
 
@@ -60,7 +60,7 @@ export function GlobalRealtimeListener({ userId, role }: GlobalRealtimeListenerP
                     schema: "public",
                     table: "deals",
                 },
-                (payload) => {
+                (payload: any) => {
                     console.log("[Realtime Global Deals Event]:", payload.eventType, payload.new)
                     router.refresh()
                 }
@@ -77,7 +77,7 @@ export function GlobalRealtimeListener({ userId, role }: GlobalRealtimeListenerP
                     schema: "public",
                     table: "deal_invitations",
                 },
-                (payload) => {
+                (payload: any) => {
                     console.log("[Realtime Invitations Event]:", payload.eventType, payload.new)
                     router.refresh()
                 }

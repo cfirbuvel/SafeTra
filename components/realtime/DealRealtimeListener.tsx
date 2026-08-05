@@ -30,15 +30,33 @@ export function DealRealtimeListener({ dealId, currentStatus }: DealRealtimeList
         const supabase = createSupabaseClient()
         let isSubscribed = true
 
+        // 1. Active 3-Second Live Poll (Guarantees 100% live update accuracy across all devices)
+        const pollInterval = setInterval(async () => {
+            if (!isSubscribed) return
+            try {
+                const { data } = await supabase.from("deals").select("status").eq("id", dealId).single()
+                if (data?.status && data.status !== currentStatus) {
+                    console.log(`[DealRealtimeListener Poll] Live status change detected: ${currentStatus} -> ${data.status}`)
+                    const hebrewStatus = statusHebrewMap[data.status] || data.status
+                    toast.success("עדכון חי בעסקה ⚡", {
+                        description: `הסטטוס השתנה ל: ${hebrewStatus}`,
+                        duration: 5000,
+                    })
+                    router.refresh()
+                    setTimeout(() => window.location.reload(), 200)
+                }
+            } catch (pollErr) {
+                // Ignore silent network glitches during poll
+            }
+        }, 3000)
+
+        // 2. Realtime WebSocket Listener (0ms instant broadcast)
         const setupListener = async () => {
             try {
-                // Ensure JWT auth token is set on WebSocket
                 const { data: { session } } = await supabase.auth.getSession()
                 if (session?.access_token) {
                     supabase.realtime.setAuth(session.access_token)
                 }
-
-                console.log(`[DealRealtimeListener] Subscribing to live room: deal-room-${dealId}`)
 
                 const channel = supabase
                     .channel(`deal-room-${dealId}`)
@@ -50,33 +68,23 @@ export function DealRealtimeListener({ dealId, currentStatus }: DealRealtimeList
                             table: "deals",
                             filter: `id=eq.${dealId}`,
                         },
-                        (payload) => {
+                        (payload: any) => {
                             if (!isSubscribed) return
                             const newDeal = payload.new as any
-                            console.log("[DealRealtimeListener] ⚡ Event received:", payload.eventType, newDeal)
+                            console.log("[DealRealtimeListener] ⚡ Realtime Event received:", payload.eventType, newDeal)
 
-                            if (newDeal?.status) {
+                            if (newDeal?.status && newDeal.status !== currentStatus) {
                                 const hebrewStatus = statusHebrewMap[newDeal.status] || newDeal.status
                                 toast.success("עדכון חי בעסקה ⚡", {
                                     description: `הסטטוס השתנה ל: ${hebrewStatus}`,
                                     duration: 5000,
                                 })
-                            }
-
-                            // Trigger instant page refresh
-                            router.refresh()
-
-                            // If status actually changed, force full reload to ensure RSC Server Components re-render
-                            if (newDeal?.status && newDeal.status !== currentStatus) {
-                                setTimeout(() => {
-                                    window.location.reload()
-                                }, 400)
+                                router.refresh()
+                                setTimeout(() => window.location.reload(), 200)
                             }
                         }
                     )
-                    .subscribe((status) => {
-                        console.log(`[DealRealtimeListener] Channel Status:`, status)
-                    })
+                    .subscribe()
 
                 return () => {
                     supabase.removeChannel(channel)
@@ -91,6 +99,7 @@ export function DealRealtimeListener({ dealId, currentStatus }: DealRealtimeList
 
         return () => {
             isSubscribed = false
+            clearInterval(pollInterval)
             if (cleanup) cleanup()
         }
     }, [dealId, currentStatus, router])

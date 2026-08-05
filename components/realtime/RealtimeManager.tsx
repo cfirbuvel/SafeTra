@@ -39,7 +39,7 @@ export function RealtimeManager({ userId, role }: RealtimeManagerProps) {
                             table: "notifications",
                             filter: `user_id=eq.${userId}`,
                         },
-                        (payload) => {
+                        (payload: any) => {
                             if (!isSubscribed) return
                             const newNotif = payload.new as any
                             console.log("[RealtimeManager] 🔔 Notification received:", newNotif)
@@ -59,7 +59,7 @@ export function RealtimeManager({ userId, role }: RealtimeManagerProps) {
                             router.refresh()
                         }
                     )
-                    .subscribe((stat) => {
+                    .subscribe((stat: any) => {
                         console.log(`[RealtimeManager] Notifs Channel Status:`, stat)
                     })
 
@@ -72,7 +72,7 @@ export function RealtimeManager({ userId, role }: RealtimeManagerProps) {
                             schema: "public",
                             table: "deals",
                         },
-                        (payload) => {
+                        (payload: any) => {
                             if (!isSubscribed) return
                             console.log("[RealtimeManager] 🚗 Deals event received:", payload.eventType, payload.new)
 
@@ -96,7 +96,7 @@ export function RealtimeManager({ userId, role }: RealtimeManagerProps) {
                             }
                         }
                     )
-                    .subscribe((stat) => {
+                    .subscribe((stat: any) => {
                         console.log(`[RealtimeManager] Deals Channel Status:`, stat)
                         if (isSubscribed) setStatus(stat)
                     })
@@ -110,7 +110,7 @@ export function RealtimeManager({ userId, role }: RealtimeManagerProps) {
                             schema: "public",
                             table: "deal_invitations",
                         },
-                        (payload) => {
+                        (payload: any) => {
                             if (!isSubscribed) return
                             console.log("[RealtimeManager] 📩 Invitation event received:", payload.eventType, payload.new)
 
@@ -124,7 +124,7 @@ export function RealtimeManager({ userId, role }: RealtimeManagerProps) {
                             }
                         }
                     )
-                    .subscribe((stat) => {
+                    .subscribe((stat: any) => {
                         console.log(`[RealtimeManager] Invitations Channel Status:`, stat)
                     })
 
