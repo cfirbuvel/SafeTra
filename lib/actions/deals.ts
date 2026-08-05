@@ -201,8 +201,8 @@ export async function inviteBuyer(dealId: string, buyerPhone: string) {
 }
 
 export async function getDealInvitations(dealId: string) {
-  const supabase = await getSupabaseClient()
-  const { data, error } = await (supabase
+  const serviceClient = getServiceRoleClient()
+  const { data, error } = await (serviceClient
     .from("deal_invitations") as any)
     .select(`
             *,
