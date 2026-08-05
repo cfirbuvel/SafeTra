@@ -8,6 +8,7 @@ import { AvatarUploader } from "@/components/profile/AvatarUploader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { runClientOCR } from "@/lib/ocr/client-ocr"
 import {
     Lock,
     Mail,
@@ -135,36 +136,51 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 return
             }
 
-            // Run OCR Extraction
+            // Run OCR Extraction (Server API first, Client-side WASM fallback)
             const ocrFormData = new FormData()
             ocrFormData.append("file", file)
             ocrFormData.append("docType", "id_card")
 
-            const ocrRes = await fetch("/api/ocr", {
-                method: "POST",
-                body: ocrFormData,
-            })
-
-            if (ocrRes.ok) {
-                const ocrData = await ocrRes.json()
-                if (ocrData.data) {
-                    setOcrResult(ocrData.data)
-                    setShowOcrJson(true)
-                    const fields = ocrData.data.fields
-                    if (fields?.id_number?.value && !isIdLocked) {
-                        setTeudatZehut(fields.id_number.value)
-                    }
-                    if (fields?.full_name?.value) {
-                        setFullName(fields.full_name.value)
-                    }
-                    if (fields?.birth_date?.value) {
-                        setBirthDate(fields.birth_date.value)
-                    }
-                    if (fields?.address?.value) {
-                        setAddress(fields.address.value)
-                    }
-                    setSuccessMessage("מסמך הזיהוי פוענח בהצלחה! הפרטים עודכנו בטופס.")
+            let finalData: any = null
+            try {
+                const ocrRes = await fetch("/api/ocr", {
+                    method: "POST",
+                    body: ocrFormData,
+                })
+                if (ocrRes.ok) {
+                    const json = await ocrRes.json()
+                    if (json.data) finalData = json.data
                 }
+            } catch (serverErr) {
+                console.warn("Server OCR call failed, switching to client OCR:", serverErr)
+            }
+
+            // Fallback to client WASM OCR if server OCR didn't find fields
+            if (!finalData?.fields?.id_number?.value && file.type.startsWith("image/")) {
+                console.log("[ProfileForm] Server OCR yielded no fields. Running Client-Side WASM OCR fallback...")
+                const clientResult = await runClientOCR(file, "id_card")
+                if (clientResult.fields && Object.keys(clientResult.fields).length > 0) {
+                    finalData = clientResult
+                }
+            }
+
+            if (finalData) {
+                setOcrResult(finalData)
+                setShowOcrJson(true)
+                const fields = finalData.fields
+                if (fields?.id_number?.value && !isIdLocked) {
+                    setTeudatZehut(fields.id_number.value)
+                }
+                if (fields?.full_name?.value) {
+                    setFullName(fields.full_name.value)
+                }
+                if (fields?.birth_date?.value) {
+                    setBirthDate(fields.birth_date.value)
+                }
+                if (fields?.address?.value) {
+                    setAddress(fields.address.value)
+                }
+                setSuccessMessage("מסמך הזיהוי פוענח בהצלחה! הפרטים עודכנו בטופס.")
             }
         } catch (err) {
             setError("שגיאה בהעלאת המסמך")

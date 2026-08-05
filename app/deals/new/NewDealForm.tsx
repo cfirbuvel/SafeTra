@@ -9,6 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Loader2, Sparkles, ShieldAlert, CheckCircle2, Upload, FileText, Camera, Video, ShieldCheck } from "lucide-react"
 import { DocumentUpload } from "@/components/DocumentUpload"
 import { OcrResultCard } from "@/components/OcrResultCard"
+import { runClientOCR } from "@/lib/ocr/client-ocr"
 
 const initialState = {
     error: "",
@@ -115,35 +116,50 @@ export function NewDealForm({ user }: NewDealFormProps = {}) {
             formData.append("file", file)
             formData.append("docType", "id_card")
 
-            const res = await fetch("/api/ocr", {
-                method: "POST",
-                body: formData,
-            })
-
-            if (res.ok) {
-                const result = await res.json()
-                if (result.data) {
-                    setIdOcrResult(result.data)
-                    setShowIdOcrJson(true)
-                    const { fields, fraudSignals } = result.data
-                    if (fields.full_name?.value) {
-                        const nameParts = fields.full_name.value.split(" ")
-                        setFirstName(nameParts[0] || "")
-                        setLastName(nameParts.slice(1).join(" ") || "")
-                        setVehicleRegOwnerName(fields.full_name.value)
-                    }
-                    if (fields.id_number?.value) {
-                        setIdNumber(fields.id_number.value)
-                        setVehicleRegOwnerId(fields.id_number.value)
-                    }
-                    if (fields.birth_date?.value) {
-                        setBirthDate(fields.birth_date.value)
-                    }
-                    if (fields.address?.value) {
-                        setAddress(fields.address.value)
-                    }
-                    setOcrSignals(prev => [...new Set([...prev, ...(fraudSignals || [])])])
+            let finalData: any = null
+            try {
+                const res = await fetch("/api/ocr", {
+                    method: "POST",
+                    body: formData,
+                })
+                if (res.ok) {
+                    const result = await res.json()
+                    if (result.data) finalData = result.data
                 }
+            } catch (serverErr) {
+                console.warn("Server ID OCR fetch failed:", serverErr)
+            }
+
+            // Fallback to client WASM OCR if server OCR didn't find fields
+            if (!finalData?.fields?.id_number?.value && file.type.startsWith("image/")) {
+                console.log("[NewDealForm ID] Running Client-Side WASM OCR fallback...")
+                const clientResult = await runClientOCR(file, "id_card")
+                if (clientResult.fields && Object.keys(clientResult.fields).length > 0) {
+                    finalData = clientResult
+                }
+            }
+
+            if (finalData) {
+                setIdOcrResult(finalData)
+                setShowIdOcrJson(true)
+                const { fields, fraudSignals } = finalData
+                if (fields.full_name?.value) {
+                    const nameParts = fields.full_name.value.split(" ")
+                    setFirstName(nameParts[0] || "")
+                    setLastName(nameParts.slice(1).join(" ") || "")
+                    setVehicleRegOwnerName(fields.full_name.value)
+                }
+                if (fields.id_number?.value) {
+                    setIdNumber(fields.id_number.value)
+                    setVehicleRegOwnerId(fields.id_number.value)
+                }
+                if (fields.birth_date?.value) {
+                    setBirthDate(fields.birth_date.value)
+                }
+                if (fields.address?.value) {
+                    setAddress(fields.address.value)
+                }
+                setOcrSignals(prev => [...new Set([...prev, ...(fraudSignals || [])])])
             }
         } catch (e) {
             console.error("OCR ID Error:", e)
@@ -160,48 +176,62 @@ export function NewDealForm({ user }: NewDealFormProps = {}) {
             formData.append("file", file)
             formData.append("docType", "vehicle_registration")
 
-            const res = await fetch("/api/ocr", {
-                method: "POST",
-                body: formData,
-            })
-
-            if (res.ok) {
-                const result = await res.json()
-                if (result.data) {
-                    setVehicleOcrResult(result.data)
-                    setShowVehicleOcrJson(true)
-                    const { fields, fraudSignals } = result.data
-                    if (fields.plate_number?.value) setLicensePlate(fields.plate_number.value)
-                    if (fields.year?.value) setVehicleYear(fields.year.value)
-                    if (fields.make?.value) setVehicleMake(fields.make.value)
-                    if (fields.model?.value) setVehicleModel(fields.model.value)
-                    if (fields.engine_volume?.value) setEngineVolume(fields.engine_volume.value)
-                    if (fields.license_expiry?.value) {
-                        const parts = fields.license_expiry.value.split('/')
-                        if (parts.length === 3) {
-                            setLicenseExpiry(`${parts[2]}-${parts[1]}-${parts[0]}`)
-                        }
-                    }
-                    if (fields.previous_owners?.value) setPreviousOwners(fields.previous_owners.value)
-                    if (fields.chassis_number?.value) setChassisNumber(fields.chassis_number.value)
-                    if (!kilometers) setKilometers("15000")
-
-                    if (fields.owner_name?.value) {
-                        setVehicleRegOwnerName(fields.owner_name.value)
-                        if (!firstName) {
-                            const nameParts = fields.owner_name.value.split(/\s+/).filter(Boolean)
-                            if (nameParts.length > 1) {
-                                setLastName(nameParts[0])
-                                setFirstName(nameParts.slice(1).join(" "))
-                            } else if (nameParts.length === 1) {
-                                setLastName(nameParts[0])
-                            }
-                        }
-                    }
-                    if (fields.owner_id?.value) setVehicleRegOwnerId(fields.owner_id.value)
-
-                    setOcrSignals(prev => [...new Set([...prev, ...(fraudSignals || [])])])
+            let finalData: any = null
+            try {
+                const res = await fetch("/api/ocr", {
+                    method: "POST",
+                    body: formData,
+                })
+                if (res.ok) {
+                    const result = await res.json()
+                    if (result.data) finalData = result.data
                 }
+            } catch (serverErr) {
+                console.warn("Server Vehicle OCR fetch failed:", serverErr)
+            }
+
+            // Fallback to client WASM OCR if server OCR didn't find fields
+            if (!finalData?.fields?.plate_number?.value && file.type.startsWith("image/")) {
+                console.log("[NewDealForm Vehicle] Running Client-Side WASM OCR fallback...")
+                const clientResult = await runClientOCR(file, "vehicle_registration")
+                if (clientResult.fields && Object.keys(clientResult.fields).length > 0) {
+                    finalData = clientResult
+                }
+            }
+
+            if (finalData) {
+                setVehicleOcrResult(finalData)
+                setShowVehicleOcrJson(true)
+                const { fields, fraudSignals } = finalData
+                if (fields.plate_number?.value) setLicensePlate(fields.plate_number.value)
+                if (fields.year?.value) setVehicleYear(fields.year.value)
+                if (fields.make?.value) setVehicleMake(fields.make.value)
+                if (fields.model?.value) setVehicleModel(fields.model.value)
+                if (fields.engine_volume?.value) setEngineVolume(fields.engine_volume.value)
+                if (fields.license_expiry?.value) {
+                    const parts = fields.license_expiry.value.split('/')
+                    if (parts.length === 3) {
+                        setLicenseExpiry(`${parts[2]}-${parts[1]}-${parts[0]}`)
+                    }
+                }
+                if (fields.previous_owners?.value) setPreviousOwners(fields.previous_owners.value)
+                if (fields.chassis_number?.value) setChassisNumber(fields.chassis_number.value)
+                if (!kilometers) setKilometers("15000")
+
+                if (fields.owner_name?.value) {
+                    setVehicleRegOwnerName(fields.owner_name.value)
+                    if (!firstName) {
+                        const nameParts = fields.owner_name.value.split(/\s+/).filter(Boolean)
+                        if (nameParts.length > 1) {
+                            setLastName(nameParts[0])
+                            setFirstName(nameParts.slice(1).join(" "))
+                        } else if (nameParts.length === 1) {
+                            setLastName(nameParts[0])
+                        }
+                    }
+                }
+                if (fields.owner_id?.value) setVehicleRegOwnerId(fields.owner_id.value)
+                setOcrSignals(prev => [...new Set([...prev, ...(fraudSignals || [])])])
             }
         } catch (e) {
             console.error("OCR Vehicle Error:", e)
