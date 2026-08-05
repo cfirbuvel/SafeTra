@@ -79,7 +79,11 @@ export function DocumentUpload({ label, onUploadComplete, isLoading: parentLoadi
         if (!selectedFile) return
 
         setFile(selectedFile)
-        setPreview(URL.createObjectURL(selectedFile))
+        if (selectedFile.type.startsWith("image/")) {
+            setPreview(URL.createObjectURL(selectedFile))
+        } else {
+            setPreview("/images/pdf-icon.png") // Fallback indicator for PDF
+        }
         await uploadFile(selectedFile)
     }
 
@@ -135,6 +139,9 @@ export function DocumentUpload({ label, onUploadComplete, isLoading: parentLoadi
     const handleDragLeave = (e: React.DragEvent) => {
         e.preventDefault()
         e.stopPropagation()
+        if (e.currentTarget && e.currentTarget.contains(e.relatedTarget as Node)) {
+            return
+        }
         setIsDragging(false)
     }
 
@@ -148,13 +155,18 @@ export function DocumentUpload({ label, onUploadComplete, isLoading: parentLoadi
         const droppedFile = e.dataTransfer.files?.[0]
         if (!droppedFile) return
 
-        if (!droppedFile.type.startsWith("image/")) {
-            alert("נא להעלות קבצי תמונה בלבד")
+        const isValidType = droppedFile.type.startsWith("image/") || droppedFile.type === "application/pdf" || droppedFile.name.endsWith(".pdf")
+        if (!isValidType) {
+            alert("נא להעלות קבצי תמונה (PNG, JPG) או קובץ PDF בלבד")
             return
         }
 
         setFile(droppedFile)
-        setPreview(URL.createObjectURL(droppedFile))
+        if (droppedFile.type.startsWith("image/")) {
+            setPreview(URL.createObjectURL(droppedFile))
+        } else {
+            setPreview("pdf")
+        }
         await uploadFile(droppedFile)
     }
 
@@ -166,49 +178,58 @@ export function DocumentUpload({ label, onUploadComplete, isLoading: parentLoadi
                 onDragEnter={handleDragEnter}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
-                className={`border-2 border-dashed rounded-lg p-4 transition-colors ${
+                className={`border-2 border-dashed rounded-lg p-4 transition-all duration-200 cursor-pointer ${
                     uploadedUrl 
-                        ? 'border-green-500 bg-green-50/10' 
+                        ? 'border-emerald-500 bg-emerald-500/10' 
                         : isDragging
-                        ? 'border-primary bg-primary/10'
-                        : 'border-muted hover:border-primary'
+                        ? 'border-emerald-400 bg-emerald-500/20 scale-[1.01] shadow-lg'
+                        : 'border-muted hover:border-emerald-500/50'
                 }`}
             >
                 {!preview ? (
-                    <div className="text-center py-4">
+                    <div className={`text-center py-4 ${isDragging ? 'pointer-events-none' : ''}`}>
                         <Button
                             type="button"
                             variant="ghost"
-                            className="w-full flex flex-col items-center gap-2 h-auto py-4"
+                            className="w-full flex flex-col items-center gap-2 h-auto py-4 hover:bg-transparent"
                             onClick={() => fileInputRef.current?.click()}
                             disabled={uploading || parentLoading}
                         >
-                            <Upload className="h-8 w-8 text-muted-foreground" />
-                            <span className="text-sm">לחץ להעלאת תמונה</span>
+                            <Upload className={`h-8 w-8 transition-transform duration-200 ${isDragging ? 'scale-110 text-emerald-400' : 'text-muted-foreground'}`} />
+                            <span className="text-sm font-semibold">
+                                {isDragging ? "שחרר את הקובץ לכאן" : "לחץ להעלאת קובץ או גרור לכאן"}
+                            </span>
+                            <span className="text-xs text-muted-foreground">תמונות (JPG, PNG) או PDF (עד 10MB)</span>
                         </Button>
                     </div>
                 ) : (
-                    <div className="relative">
-                        <img
-                            src={preview}
-                            alt="Preview"
-                            className="w-full h-32 object-contain rounded mb-2"
-                        />
-                        <div className="flex items-center justify-between">
-                            <span className="text-xs text-muted-foreground truncate max-w-[150px]">
+                    <div className="relative p-2">
+                        {preview === "pdf" ? (
+                            <div className="flex items-center justify-center p-4 bg-slate-800/60 rounded-lg text-emerald-400 font-bold text-sm">
+                                📄 מסמך PDF: {file?.name}
+                            </div>
+                        ) : (
+                            <img
+                                src={preview}
+                                alt="Preview"
+                                className="w-full h-36 object-contain rounded mb-2"
+                            />
+                        )}
+                        <div className="flex items-center justify-between mt-2">
+                            <span className="text-xs text-muted-foreground truncate max-w-[180px]">
                                 {file?.name}
                             </span>
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 items-center">
                                 {uploading ? (
-                                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                    <Loader2 className="h-4 w-4 animate-spin text-emerald-400" />
                                 ) : (
-                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                    <CheckCircle2 className="h-4 w-4 text-emerald-400" />
                                 )}
                                 <Button
                                     type="button"
                                     variant="ghost"
                                     size="icon"
-                                    className="h-6 w-6"
+                                    className="h-6 w-6 text-slate-400 hover:text-red-400"
                                     onClick={clearFile}
                                     disabled={uploading || parentLoading}
                                 >
@@ -221,7 +242,7 @@ export function DocumentUpload({ label, onUploadComplete, isLoading: parentLoadi
                 <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/png, image/jpeg, image/webp, application/pdf"
                     className="hidden"
                     onChange={handleFileChange}
                 />

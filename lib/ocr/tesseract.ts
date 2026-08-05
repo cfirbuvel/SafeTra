@@ -13,13 +13,13 @@ export async function runOCR(imageBuffer: Buffer): Promise<{ text: string; confi
         const timeout = setTimeout(async () => {
             if (!isCompleted) {
                 isCompleted = true;
-                console.warn("[OCR] Timeout reached (6s). Returning fast response.");
+                console.warn("[OCR] Timeout reached (20s). Returning fast response.");
                 if (worker) {
                     try { await worker.terminate(); } catch (e) {}
                 }
                 resolve({ text: "", confidence: 50 });
             }
-        }, 6000);
+        }, 20000);
 
         try {
             const langPath = process.cwd()
@@ -33,7 +33,7 @@ export async function runOCR(imageBuffer: Buffer): Promise<{ text: string; confi
             })
 
             await worker.setParameters({
-                tessedit_pageseg_mode: "3" as any,
+                tessedit_pageseg_mode: "11" as any, // 11 = Sparse text: find as much text as possible in no particular order
             })
 
             const res = await worker.recognize(imageBuffer)

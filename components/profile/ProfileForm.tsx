@@ -23,6 +23,7 @@ import {
     Smartphone,
     Clock
 } from "lucide-react"
+import { OcrResultCard } from "@/components/OcrResultCard"
 
 interface ProfileFormProps {
     user: any
@@ -35,6 +36,8 @@ export function ProfileForm({ user }: ProfileFormProps) {
     // Form fields
     const [fullName, setFullName] = useState(user.full_name || "")
     const [avatarUrl, setAvatarUrl] = useState(user.image || user.avatar_url || "")
+    const [birthDate, setBirthDate] = useState(user.birth_date || user.user_metadata?.birth_date || "")
+    const [address, setAddress] = useState(user.address || user.city || user.user_metadata?.address || "")
 
     // ID Number lock status
     const existingId = user.id_number || user.teudat_zehut || ""
@@ -49,9 +52,11 @@ export function ProfileForm({ user }: ProfileFormProps) {
     const [otpCode, setOtpCode] = useState("")
     const [verifiedContact, setVerifiedContact] = useState<{ type: "email" | "phone"; value: string } | null>(null)
 
-    // ID Document Upload simulation state
+    // ID Document Upload state
+    const initialIdDocUrl = user.id_doc_url || user.user_metadata?.id_doc_url || ""
+    const [idDocUrl, setIdDocUrl] = useState(initialIdDocUrl)
     const [idDocUploading, setIdDocUploading] = useState(false)
-    const [idDocSaved, setIdDocSaved] = useState(false)
+    const [idDocSaved, setIdDocSaved] = useState(Boolean(initialIdDocUrl))
 
     // Alert feedback
     const [successMessage, setSuccessMessage] = useState<string | null>(null)
@@ -91,12 +96,20 @@ export function ProfileForm({ user }: ProfileFormProps) {
         setVerificationLoading(false)
     }
 
-    const handleIdDocUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
-        if (!file) return
+    const [isDraggingId, setIsDraggingId] = useState(false)
+    const [idDocPreviewUrl, setIdDocPreviewUrl] = useState<string | null>(initialIdDocUrl || null)
+    const [ocrResult, setOcrResult] = useState<any>(null)
+    const [showOcrJson, setShowOcrJson] = useState(true)
 
+    const processIdFile = async (file: File) => {
         setIdDocUploading(true)
         setError(null)
+
+        if (file.type.startsWith("image/")) {
+            setIdDocPreviewUrl(URL.createObjectURL(file))
+        } else {
+            setIdDocPreviewUrl("pdf")
+        }
 
         try {
             const formData = new FormData()
@@ -108,16 +121,101 @@ export function ProfileForm({ user }: ProfileFormProps) {
             })
 
             if (res.ok) {
+                const uploadData = await res.json()
+                if (uploadData.url) {
+                    setIdDocUrl(uploadData.url)
+                    if (file.type.startsWith("image/")) {
+                        setIdDocPreviewUrl(uploadData.url)
+                    }
+                }
                 setIdDocSaved(true)
                 setSuccessMessage("מסמך הזיהוי הועלה ונשלח לבדיקת מערכת")
             } else {
                 setError("שגיאה בהעלאת מסמך הזיהוי")
+                return
+            }
+
+            // Run OCR Extraction
+            const ocrFormData = new FormData()
+            ocrFormData.append("file", file)
+            ocrFormData.append("docType", "id_card")
+
+            const ocrRes = await fetch("/api/ocr", {
+                method: "POST",
+                body: ocrFormData,
+            })
+
+            if (ocrRes.ok) {
+                const ocrData = await ocrRes.json()
+                if (ocrData.data) {
+                    setOcrResult(ocrData.data)
+                    setShowOcrJson(true)
+                    const fields = ocrData.data.fields
+                    if (fields?.id_number?.value && !isIdLocked) {
+                        setTeudatZehut(fields.id_number.value)
+                    }
+                    if (fields?.full_name?.value) {
+                        setFullName(fields.full_name.value)
+                    }
+                    if (fields?.birth_date?.value) {
+                        setBirthDate(fields.birth_date.value)
+                    }
+                    if (fields?.address?.value) {
+                        setAddress(fields.address.value)
+                    }
+                    setSuccessMessage("מסמך הזיהוי פוענח בהצלחה! הפרטים עודכנו בטופס.")
+                }
             }
         } catch (err) {
             setError("שגיאה בהעלאת המסמך")
         } finally {
             setIdDocUploading(false)
         }
+    }
+
+    const handleIdDocUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        await processIdFile(file)
+    }
+
+    const handleIdDragOver = (e: React.DragEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+    }
+
+    const handleIdDragEnter = (e: React.DragEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+        if (idDocUploading) return
+        setIsDraggingId(true)
+    }
+
+    const handleIdDragLeave = (e: React.DragEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+        if (e.currentTarget && e.currentTarget.contains(e.relatedTarget as Node)) {
+            return
+        }
+        setIsDraggingId(false)
+    }
+
+    const handleIdDrop = async (e: React.DragEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setIsDraggingId(false)
+        if (idDocUploading) return
+
+        const file = e.dataTransfer.files?.[0]
+        if (!file) return
+
+        const isValidType = file.type.startsWith("image/") || file.type === "application/pdf" || file.name.endsWith(".pdf")
+        if (!isValidType) {
+            setError("נא להעלות קבצי תמונה (JPG, PNG) או קובץ PDF בלבד")
+            return
+        }
+
+        await processIdFile(file)
     }
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -131,8 +229,20 @@ export function ProfileForm({ user }: ProfileFormProps) {
             avatarUrl,
         }
 
-        if (!isIdLocked && teudatZehut) {
+        if (teudatZehut) {
             payload.teudatZehut = teudatZehut
+        }
+
+        if (idDocUrl) {
+            payload.idDocUrl = idDocUrl
+        }
+
+        if (birthDate) {
+            payload.birthDate = birthDate
+        }
+
+        if (address) {
+            payload.address = address
         }
 
         if (verifiedContact) {
@@ -158,6 +268,8 @@ export function ProfileForm({ user }: ProfileFormProps) {
     const displayEmail = verifiedContact?.type === "email" ? verifiedContact.value : (isShadowEmail ? "לא הוגדר (התחברות טלפונית)" : (user.email || ""))
     const displayPhone = verifiedContact?.type === "phone" ? verifiedContact.value : (user.phone || "לא הוגדר")
 
+    const hasIdDoc = Boolean(idDocSaved || idDocUrl || user.id_doc_url)
+
     return (
         <form onSubmit={handleSubmit} className="space-y-6 text-slate-100">
             {/* Profile Avatar Header */}
@@ -176,14 +288,27 @@ export function ProfileForm({ user }: ProfileFormProps) {
             <div className="rounded-xl p-5 border border-white/10 bg-slate-900/60 backdrop-blur-xl space-y-4 shadow-lg">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        <div className="p-2 bg-amber-500/10 text-amber-400 rounded-lg border border-amber-500/20">
+                        <div className={`p-2 rounded-lg border ${hasIdDoc ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-amber-500/10 text-amber-400 border-amber-500/20"}`}>
                             <FileCheck className="h-5 w-5" />
                         </div>
                         <h3 className="text-lg font-bold font-rubik text-slate-100">אימות זהות</h3>
                     </div>
-                    <div className="px-3 py-1 bg-amber-500/10 border border-amber-500/30 rounded-md flex items-center gap-1.5 text-xs text-amber-400 font-medium">
-                        <Clock className="h-3.5 w-3.5" />
-                        <span>{idDocSaved ? "בבדיקה" : "ממתין להעלאה"}</span>
+                    <div className={`px-3 py-1 rounded-md flex items-center gap-1.5 text-xs font-medium ${
+                        hasIdDoc
+                            ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-400"
+                            : "bg-amber-500/10 border border-amber-500/30 text-amber-400"
+                    }`}>
+                        {hasIdDoc ? (
+                            <>
+                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                                <span>מסמך הועלה בהצלחה</span>
+                            </>
+                        ) : (
+                            <>
+                                <Clock className="h-3.5 w-3.5 text-amber-400" />
+                                <span>ממתין להעלאה</span>
+                            </>
+                        )}
                     </div>
                 </div>
 
@@ -191,26 +316,76 @@ export function ProfileForm({ user }: ProfileFormProps) {
                     על מנת להבטיח את סביבת העסקאות, אנו דורשים אימות מזהה ממשלתי (תעודת זהות או דרכון).
                 </p>
 
-                <label className="border-2 border-dashed border-emerald-400/40 hover:border-emerald-400 bg-emerald-500/5 hover:bg-emerald-500/10 rounded-xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all duration-200">
+                {/* ID Thumbnail Preview */}
+                {idDocPreviewUrl && (
+                    <div className="relative rounded-xl border border-emerald-500/30 bg-slate-950/80 p-4 flex flex-col items-center gap-3 shadow-xl">
+                        {idDocPreviewUrl === "pdf" ? (
+                            <div className="flex items-center gap-2 text-emerald-400 font-bold py-6 text-sm">
+                                📄 מסמך PDF מאומת הועלה בהצלחה
+                            </div>
+                        ) : (
+                            <img
+                                src={idDocPreviewUrl}
+                                alt="תצוגה מקדימה של תעודת הזהות"
+                                className="max-h-48 w-auto object-contain rounded-lg shadow-md border border-white/10"
+                            />
+                        )}
+                        <div className="flex items-center justify-between w-full border-t border-white/10 pt-2 px-1">
+                            <span className="text-xs text-emerald-400 font-medium flex items-center gap-1">
+                                <CheckCircle2 className="h-4 w-4" />
+                                תעודת זהות שהועלתה
+                            </span>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="text-xs text-slate-400 hover:text-emerald-400 h-7"
+                                onClick={() => {
+                                    setIdDocPreviewUrl(null)
+                                    setIdDocSaved(false)
+                                }}
+                            >
+                                החלף תמונה
+                            </Button>
+                        </div>
+                    </div>
+                )}
+
+                <label
+                    onDragOver={handleIdDragOver}
+                    onDragEnter={handleIdDragEnter}
+                    onDragLeave={handleIdDragLeave}
+                    onDrop={handleIdDrop}
+                    className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all duration-200 ${
+                        isDraggingId
+                            ? "border-emerald-400 bg-emerald-500/20 scale-[1.01] shadow-xl"
+                            : "border-emerald-400/40 hover:border-emerald-400 bg-emerald-500/5 hover:bg-emerald-500/10"
+                    }`}
+                >
                     <input
                         type="file"
-                        accept="image/png, image/jpeg, application/pdf"
+                        accept="image/png, image/jpeg, image/webp, application/pdf"
                         className="hidden"
                         onChange={handleIdDocUpload}
                         disabled={idDocUploading}
                     />
-                    {idDocUploading ? (
-                        <Loader2 className="h-8 w-8 text-emerald-400 animate-spin" />
-                    ) : idDocSaved ? (
-                        <CheckCircle2 className="h-8 w-8 text-emerald-400" />
-                    ) : (
-                        <UploadCloud className="h-8 w-8 text-emerald-400" />
-                    )}
-                    <span className="text-sm font-semibold text-emerald-400">
-                        {idDocUploading ? "מעלה מסמך..." : idDocSaved ? "מסמך הועלה בהצלחה" : "לחץ להעלאת מסמך או גרור לכאן"}
-                    </span>
-                    <span className="text-xs text-slate-500">JPG, PNG או PDF (עד 5MB)</span>
+                    <div className={`flex flex-col items-center justify-center gap-2 ${isDraggingId ? "pointer-events-none" : ""}`}>
+                        {idDocUploading ? (
+                            <Loader2 className="h-8 w-8 text-emerald-400 animate-spin" />
+                        ) : idDocSaved ? (
+                            <CheckCircle2 className="h-8 w-8 text-emerald-400" />
+                        ) : (
+                            <UploadCloud className={`h-8 w-8 text-emerald-400 transition-transform duration-200 ${isDraggingId ? "scale-125" : ""}`} />
+                        )}
+                        <span className="text-sm font-semibold text-emerald-400">
+                            {idDocUploading ? "מעלה ומפענח מסמך..." : isDraggingId ? "שחרר את המסמך לכאן" : idDocSaved ? "מסמך הועלה בהצלחה" : "לחץ להעלאת מסמך או גרור לכאן"}
+                        </span>
+                        <span className="text-xs text-slate-500">JPG, PNG או PDF (עד 5MB)</span>
+                    </div>
                 </label>
+
+                {/* User-Friendly OCR Results Card */}
+                {ocrResult && <OcrResultCard result={ocrResult} />}
             </div>
 
             {/* Section 2: Phone & Contact Verification (Stitch Screen 2) */}
@@ -514,6 +689,30 @@ export function ProfileForm({ user }: ProfileFormProps) {
                                 <Lock className="absolute left-3 top-3.5 h-4 w-4 text-slate-600" />
                             )}
                         </div>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="birthDate" className="text-xs text-slate-400 font-medium">תאריך לידה</Label>
+                        <Input
+                            id="birthDate"
+                            value={birthDate}
+                            onChange={(e) => setBirthDate(e.target.value)}
+                            placeholder="DD/MM/YYYY"
+                            className="bg-slate-950/60 border-slate-800 text-slate-100 h-11 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="address" className="text-xs text-slate-400 font-medium">כתובת / עיר מגורים</Label>
+                        <Input
+                            id="address"
+                            value={address}
+                            onChange={(e) => setAddress(e.target.value)}
+                            placeholder="עיר, רחוב"
+                            className="bg-slate-950/60 border-slate-800 text-slate-100 h-11 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                        />
                     </div>
                 </div>
 

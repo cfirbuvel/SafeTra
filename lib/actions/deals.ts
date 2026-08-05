@@ -50,15 +50,20 @@ export async function inviteBuyer(dealId: string, buyerPhone: string) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "התחברות נדרשת" }
 
-  // 2. Validate Deal Ownership
-  const { data: deal, error: dealError } = await (supabase
+  // 2. Validate Deal Ownership (using serviceClient to bypass RLS)
+  const { data: deal, error: dealError } = await (serviceClient
     .from("deals") as any)
     .select("*")
     .eq("id", dealId)
-    .eq("seller_id", user.id)
-    .single()
+    .maybeSingle()
 
-  if (dealError || !deal) return { error: "עסקה לא נמצאה או שאין הרשאה" }
+  if (dealError || !deal) return { error: "עסקה לא נמצאה" }
+
+  const isSeller = deal.seller_id === user.id
+  if (!isSeller) {
+    return { error: "אין הרשאה להזמין קונה לעסקה זו" }
+  }
+
   if ((deal as any).status === "EXPIRED") return { error: "לא ניתן להזמין קונה לעסקה שפגה" }
 
   // 3. Normalize Input (Can be Phone or Email)
@@ -218,14 +223,18 @@ export async function createDeal(formData: FormData) {
     redirect("/auth/login")
   }
 
-  // Check Profile Completeness
-  const { data: profile } = await (supabase
+  // Check Profile Completeness (service client to bypass RLS + fallback check)
+  const { data: profile } = await (serviceClient
     .from("profiles") as any)
-    .select("full_name, id_number, email")
+    .select("*")
     .eq("id", user.id)
-    .single()
+    .maybeSingle()
 
-  const isProfileComplete = profile && (profile as any).full_name && (profile as any).id_number && (profile as any).email
+  const profileFullName = profile?.full_name || user.user_metadata?.full_name || user.user_metadata?.name
+  const profileIdNumber = profile?.id_number || profile?.teudat_zehut || user.user_metadata?.id_number || user.user_metadata?.teudat_zehut
+  const profileContact = profile?.email || profile?.phone || user.email || user.user_metadata?.phone
+
+  const isProfileComplete = Boolean(profileFullName && profileIdNumber && profileContact)
 
   if (!isProfileComplete) {
     redirect("/auth/complete-profile")
@@ -253,6 +262,16 @@ export async function createDeal(formData: FormData) {
   const kilometers = parseInt(formData.get("kilometers") as string) || null
   const vehicleRegOwnerName = formData.get("vehicleRegOwnerName") as string || null
   const vehicleRegOwnerId = formData.get("vehicleRegOwnerId") as string || null
+  const thumbnailUrl = formData.get("thumbnailUrl") as string || null
+  const vehicleImagesJson = formData.get("vehicleImages") as string
+  let vehicleImages: string[] = []
+  if (vehicleImagesJson) {
+    try {
+      vehicleImages = JSON.parse(vehicleImagesJson)
+    } catch {
+      vehicleImages = []
+    }
+  }
 
   if (firstName && lastName && idNumber) {
     await (serviceClient.from("profiles") as any).upsert({
@@ -268,7 +287,7 @@ export async function createDeal(formData: FormData) {
     return { error: "כל השדות נדרשים" }
   }
 
-  const { data, error } = await (supabase
+  const { data, error } = await (serviceClient
     .from("deals") as any)
     .insert([
       {
@@ -291,7 +310,9 @@ export async function createDeal(formData: FormData) {
         chassis_number: chassisNumber,
         kilometers: kilometers,
         vehicle_reg_owner_name: vehicleRegOwnerName,
-        vehicle_reg_owner_id: vehicleRegOwnerId
+        vehicle_reg_owner_id: vehicleRegOwnerId,
+        thumbnail_url: thumbnailUrl,
+        vehicle_images: vehicleImages
       },
     ])
     .select()

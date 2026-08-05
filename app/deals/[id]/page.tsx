@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge"
 import { format } from "date-fns"
 import { he } from "date-fns/locale"
 
+import { Handshake, CheckCircle2, XCircle, ShieldCheck, Camera } from "lucide-react"
+
 export const metadata = {
   title: "פרטי עסקה - AutoTrust",
   description: "צפייה בפרטי עסקה וניהול סטטוס",
@@ -77,9 +79,13 @@ export default async function DealPage({ params }: DealPageProps) {
 
   const validTransitions: Record<string, string[]> = {
     DRAFT: ["SUBMITTED", "EXPIRED"],
-    SUBMITTED: ["UNDER_REVIEW", "EXPIRED"],
-    UNDER_REVIEW: ["READY_FOR_NEXT_STAGE", "EXPIRED"],
-    READY_FOR_NEXT_STAGE: ["EXPIRED"],
+    SUBMITTED: ["UNDER_REVIEW", "AWAITING_PAYMENT", "EXPIRED"],
+    UNDER_REVIEW: ["AWAITING_PAYMENT", "EXPIRED"],
+    AWAITING_PAYMENT: ["PAYMENT_VERIFICATION"],
+    PAYMENT_VERIFICATION: ["OWNERSHIP_TRANSFER_PENDING"],
+    OWNERSHIP_TRANSFER_PENDING: ["COMPLETED"],
+    COMPLETED: [],
+    CANCELLED: [],
     EXPIRED: [],
   }
 
@@ -99,6 +105,38 @@ export default async function DealPage({ params }: DealPageProps) {
           {/* ... Profile / Deal Details Card ... */}
           <Card className="p-6 mb-6">
             <div className="space-y-6">
+              {/* Vehicle Hero Image & Photo Gallery */}
+              {(() => {
+                const heroImg = deal.thumbnail_url || (deal.vehicle_images && deal.vehicle_images.length > 0 ? deal.vehicle_images[0] : null)
+                const allImages: string[] = deal.vehicle_images && deal.vehicle_images.length > 0
+                  ? deal.vehicle_images
+                  : (deal.thumbnail_url ? [deal.thumbnail_url] : [])
+
+                if (!heroImg) return null
+
+                return (
+                  <div className="space-y-3 pb-4 border-b border-white/10">
+                    <div className="relative aspect-video w-full rounded-xl overflow-hidden border border-white/10 shadow-lg">
+                      <img src={heroImg} alt={deal.title} className="w-full h-full object-cover" />
+                      <div className="absolute top-3 right-3 bg-black/70 backdrop-blur-md text-white text-[10px] font-bold px-2.5 py-1 rounded-full border border-white/10 flex items-center gap-1.5 shadow-md">
+                        <Camera className="h-3.5 w-3.5 text-primary" />
+                        <span>תמונות הרכב ({allImages.length})</span>
+                      </div>
+                    </div>
+
+                    {allImages.length > 1 && (
+                      <div className="grid grid-cols-4 gap-2">
+                        {allImages.map((imgUrl: string, iIdx: number) => (
+                          <div key={iIdx} className="aspect-video rounded-lg overflow-hidden border border-white/10 hover:border-primary transition-all">
+                            <img src={imgUrl} alt={`תמונת רכב ${iIdx + 1}`} className="w-full h-full object-cover" />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+
               {/* Header Info */}
               <div className="flex justify-between items-start border-b pb-4">
                 <div>
@@ -192,27 +230,44 @@ export default async function DealPage({ params }: DealPageProps) {
 
           {/* Buyer Approval Section */}
           {deal.status === "DRAFT" && user?.id === deal.buyer_id && (
-            <Card className="p-6 mt-6 border-blue-200 bg-blue-50/50">
-              <h2 className="text-lg font-bold text-foreground mb-2">אישור הצעה</h2>
-              <p className="text-muted-foreground mb-4">
-                המוכר הזמין אותך לעסקה זו. אנא עיין בפרטים ואשר את ההצעה כדי להמשיך לתהליך העברת הבעלות מול עורך הדין.
+            <Card className="glass-card p-6 mt-6 rounded-2xl border border-primary/30 bg-primary/10 backdrop-blur-2xl text-right shadow-[0_0_35px_rgba(16,185,129,0.12)]">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/20 border border-primary/30 text-primary flex items-center justify-center">
+                    <Handshake className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-extrabold text-on-surface">אישור הצעת רכישה 🤝</h2>
+                    <p className="text-xs text-on-surface-variant">הזמנה רשמית מהמוכר לעסקת SafeTra</p>
+                  </div>
+                </div>
+                <Badge variant="outline" className="bg-primary/20 text-primary border-primary/30 font-bold text-xs px-3 py-1">
+                  ממתין לאישורך
+                </Badge>
+              </div>
+
+              <p className="text-xs text-on-surface-variant leading-relaxed my-4">
+                המוכר הזמין אותך לעסקה זו. אנא עיין בקפדנות בפרטי הרכב והמחיר, ולאחר מכן אישר את ההצעה כדי להעביר את העסקה לבדיקת עורך הדין ופתיחת הפקדת הנאמנות.
               </p>
-              <div className="flex gap-4">
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
                 <form action={async () => {
                   "use server"
                   await approveDeal(deal.id)
-                }}>
-                  <Button type="submit" size="lg" className="bg-blue-600 hover:bg-blue-700 text-white">
-                    אשר הצעה והתחל תהליך
+                }} className="flex-1">
+                  <Button type="submit" className="w-full h-12 rounded-xl font-bold bg-primary hover:bg-primary-fixed-dim text-on-primary shadow-[0_0_20px_rgba(16,185,129,0.25)] transition-all flex items-center gap-2 justify-center cursor-pointer">
+                    <CheckCircle2 className="h-5 w-5" />
+                    <span>אשר הצעה והתחל תהליך</span>
                   </Button>
                 </form>
 
                 <form action={async () => {
                   "use server"
                   await rejectDeal(deal.id)
-                }}>
-                  <Button type="submit" variant="destructive" size="lg">
-                    דחה הצעה
+                }} className="sm:w-auto">
+                  <Button type="submit" variant="ghost" className="w-full h-12 px-6 rounded-xl font-bold bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all flex items-center gap-2 justify-center cursor-pointer">
+                    <XCircle className="h-5 w-5" />
+                    <span>דחה הצעה</span>
                   </Button>
                 </form>
               </div>

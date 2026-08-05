@@ -89,6 +89,8 @@ export function EscrowVaultWidget({ deal, currentUserId }: EscrowVaultWidgetProp
                 </div>
 
                 <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 font-bold px-3 py-1">
+                    {deal.status === "DRAFT" && "טיוטה - ממתין לקונה"}
+                    {["SUBMITTED", "UNDER_REVIEW"].includes(deal.status) && "הוגשה - בבדיקת עו״ד"}
                     {deal.status === "AWAITING_PAYMENT" && "ממתין להפקדה"}
                     {deal.status === "PAYMENT_VERIFICATION" && "אימות תשלום"}
                     {deal.status === "OWNERSHIP_TRANSFER_PENDING" && "כספים נעולים בנאמנות"}
@@ -98,6 +100,32 @@ export function EscrowVaultWidget({ deal, currentUserId }: EscrowVaultWidgetProp
             </CardHeader>
 
             <CardContent className="px-0 pt-6 space-y-6">
+
+                {/* STAGE 0A: DRAFT */}
+                {deal.status === "DRAFT" && (
+                    <div className="p-4 rounded-xl bg-gray-500/10 border border-gray-500/20 text-xs text-on-surface-variant space-y-2">
+                        <div className="flex items-center gap-2 font-bold text-on-surface">
+                            <Clock className="h-4 w-4 text-gray-400" />
+                            <span>העסקה במצב טיוטה</span>
+                        </div>
+                        <p className="leading-relaxed">
+                            על המוכר להזמין קונה לעסקה. לאחר שהקונה יאשר את ההצעה, העסקה תועבר לבדיקת עורך הדין ולאחר מכן לפתיחת הפקדת הנאמנות.
+                        </p>
+                    </div>
+                )}
+
+                {/* STAGE 0B: SUBMITTED / UNDER REVIEW */}
+                {["SUBMITTED", "UNDER_REVIEW"].includes(deal.status) && (
+                    <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-on-surface-variant space-y-2">
+                        <div className="flex items-center gap-2 font-bold text-blue-400">
+                            <Clock className="h-4 w-4" />
+                            <span>העסקה הוגשה ובהמתנה לאישור עורך דין</span>
+                        </div>
+                        <p className="leading-relaxed">
+                            הקונה אישר את תנאי העסקה! עורך הדין המפקח מציג ובודק כעת את מסמכי הרכב והזהות. ברגע שעורך הדין יאשר את העסקה (מעבר לסטטוס <strong>"ממתין לתשלום"</strong>), יופיעו כאן פרטי חשבון הבנק הנאמן וקוד הייחוס לצורך ביצוע ההעברה.
+                        </p>
+                    </div>
+                )}
 
                 {/* STAGE 1: AWAITING PAYMENT (Deposit instructions & proof upload) */}
                 {deal.status === "AWAITING_PAYMENT" && (

@@ -22,21 +22,47 @@ export async function uploadPrivateDocument(file: File, userId: string) {
         const arrayBuffer = await file.arrayBuffer()
         const buffer = Buffer.from(arrayBuffer)
 
+        // Ensure "documents" storage bucket exists
+        try {
+            const { data: buckets } = await supabase.storage.listBuckets()
+            const exists = buckets?.some((b: any) => b.name === "documents")
+            if (!exists) {
+                await supabase.storage.createBucket("documents", {
+                    public: true,
+                    fileSizeLimit: 10485760, // 10MB
+                })
+            }
+        } catch (bucketErr) {
+            console.warn("Storage bucket check warning:", bucketErr)
+        }
+
         const { data, error } = await supabase.storage
             .from("documents")
             .upload(filePath, buffer, {
                 contentType: file.type || "image/jpeg",
                 cacheControl: "3600",
-                upsert: false,
+                upsert: true,
             })
 
         if (error) {
             console.error("Supabase Storage Error:", error)
-            // Fallback mock path if storage bucket doesn't exist yet in local/dev setup
+            // If bucket 404 occurs, create bucket explicitly and retry once
+            if (error.message?.includes("Bucket not found") || (error as any).statusCode === "404" || (error as any).status === 400) {
+                try {
+                    await supabase.storage.createBucket("documents", { public: true })
+                    const retry = await supabase.storage.from("documents").upload(filePath, buffer, {
+                        contentType: file.type || "image/jpeg",
+                        upsert: true,
+                    })
+                    if (retry.data?.path) return retry.data.path
+                } catch (retryErr) {
+                    console.error("Storage bucket retry failed:", retryErr)
+                }
+            }
             return filePath
         }
 
-        return data.path
+        return data?.path || filePath
     } catch (err: any) {
         console.error("Storage upload exception:", err)
         return filePath

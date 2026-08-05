@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   email TEXT,
   phone TEXT,
   avatar_url TEXT,
+  id_doc_url TEXT,
   invited_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   role user_role DEFAULT 'user',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -41,26 +42,30 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+-- Helper function to check staff status without triggering RLS recursion
+CREATE OR REPLACE FUNCTION public.is_staff()
+RETURNS boolean AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND (role = 'lawyer' OR role = 'admin')
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
+
 -- Profiles Policies
+DROP POLICY IF EXISTS "Lawyers can view all profiles" ON public.profiles;
 DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
 CREATE POLICY "Users can view own profile"
   ON public.profiles FOR SELECT
   TO authenticated
-  USING (auth.uid() = id);
+  USING (auth.uid() = id OR public.is_staff());
 
 DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile"
   ON public.profiles FOR UPDATE
   TO authenticated
-  USING (auth.uid() = id);
-
-DROP POLICY IF EXISTS "Lawyers can view all profiles" ON public.profiles;
-CREATE POLICY "Lawyers can view all profiles"
-  ON public.profiles FOR SELECT
-  TO authenticated
-  USING (
-    auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'lawyer' OR role = 'admin')
-  );
+  USING (auth.uid() = id OR public.is_staff());
 
 -- 3. Create Deals Table
 CREATE TABLE IF NOT EXISTS public.deals (
@@ -86,6 +91,8 @@ CREATE TABLE IF NOT EXISTS public.deals (
   kilometers INTEGER,
   vehicle_reg_owner_name TEXT,
   vehicle_reg_owner_id TEXT,
+  thumbnail_url TEXT,
+  vehicle_images TEXT[],
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -111,12 +118,12 @@ CREATE POLICY "Users can update own deals" ON public.deals
 DROP POLICY IF EXISTS "Lawyers can view all deals" ON public.deals;
 CREATE POLICY "Lawyers can view all deals" ON public.deals
   FOR SELECT TO authenticated
-  USING (auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'lawyer' OR role = 'admin'));
+  USING (public.is_staff());
 
 DROP POLICY IF EXISTS "Lawyers can update all deals" ON public.deals;
 CREATE POLICY "Lawyers can update all deals" ON public.deals
   FOR UPDATE TO authenticated
-  USING (auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'lawyer' OR role = 'admin'));
+  USING (public.is_staff());
 
 -- 4. Create Notifications Table
 CREATE TABLE IF NOT EXISTS public.notifications (
@@ -216,4 +223,9 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user_signup();
+
+-- 8. Create Documents Storage Bucket
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('documents', 'documents', true)
+ON CONFLICT (id) DO NOTHING;
 

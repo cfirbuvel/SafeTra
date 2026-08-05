@@ -237,22 +237,56 @@ export async function getCurrentUser() {
   try {
     const supabase = await getSupabaseClient()
     const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
-    if (authError || !authUser) return null
+    if (authError || !authUser) {
+      if (authError?.message?.includes("Refresh Token") || (authError as any)?.code === "refresh_token_not_found") {
+        try {
+          await supabase.auth.signOut()
+        } catch (e) {}
+      }
+      return null
+    }
 
-    // Always fetch profile to get real email/name if completed
-    const { data: profile } = await (supabase.from("profiles") as any)
+    const serviceClient = getServiceRoleClient()
+
+    // Always fetch profile using service role client to bypass RLS and get real saved data
+    const { data: profile } = await (serviceClient.from("profiles") as any)
       .select("*")
       .eq("id", authUser.id)
       .maybeSingle()
 
-    if (!profile) return authUser
+    // Extract Google OAuth avatar metadata and full name
+    const googleAvatar = authUser.user_metadata?.avatar_url || authUser.user_metadata?.picture || null
+    const googleFullName = authUser.user_metadata?.full_name || authUser.user_metadata?.name || authUser.email?.split("@")[0] || "User"
+
+    if (!profile) {
+      // Ensure profile row exists with Google data if trigger didn't catch it
+      try {
+        const serviceClient = getServiceRoleClient()
+        await (serviceClient.from("profiles") as any).upsert({
+          id: authUser.id,
+          full_name: googleFullName,
+          email: authUser.email,
+          avatar_url: googleAvatar
+        }, { onConflict: "id" })
+      } catch (e) {
+        console.error("Auto profile creation fallback error:", e)
+      }
+
+      return {
+        ...authUser,
+        full_name: googleFullName,
+        image: googleAvatar,
+        avatar_url: googleAvatar,
+        isShadowEmail: false,
+      }
+    }
 
     // Check if the current email is a shadow email
     const isShadowEmail = profile.email?.endsWith("@autotrust-demo.com")
 
     // Extract avatar URL: Prioritize DB URL if set, otherwise Google OAuth metadata
-    const googleAvatar = authUser.user_metadata?.avatar_url || authUser.user_metadata?.picture || null
-    const image = profile?.avatar_url || googleAvatar || null
+    const image = profile.avatar_url || googleAvatar || null
+    const fullName = profile.full_name || googleFullName
 
     // If profile in DB doesn't have an avatar_url yet but Google avatar exists, auto-sync it to DB
     if (profile && !profile.avatar_url && googleAvatar) {
@@ -266,12 +300,20 @@ export async function getCurrentUser() {
       }
     }
 
+    const idDocUrl = profile?.id_doc_url || authUser.user_metadata?.id_doc_url || null
+    const birthDate = profile?.birth_date || authUser.user_metadata?.birth_date || null
+    const address = profile?.address || profile?.city || authUser.user_metadata?.address || null
+
     // Return a merged object
     return {
       ...authUser,
       ...profile,
+      full_name: fullName,
       image,
-      // Ensure we flag it if it's a shadow email so the UI can handle it
+      avatar_url: image,
+      id_doc_url: idDocUrl,
+      birth_date: birthDate,
+      address,
       isShadowEmail,
     }
   } catch (error: any) {

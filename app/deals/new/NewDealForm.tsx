@@ -8,12 +8,17 @@ import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Loader2, Sparkles, ShieldAlert, CheckCircle2, Upload, FileText, Camera, Video, ShieldCheck } from "lucide-react"
 import { DocumentUpload } from "@/components/DocumentUpload"
+import { OcrResultCard } from "@/components/OcrResultCard"
 
 const initialState = {
     error: "",
 }
 
-export function NewDealForm() {
+interface NewDealFormProps {
+    user?: any
+}
+
+export function NewDealForm({ user }: NewDealFormProps = {}) {
     const [state, action, isPending] = useActionState(async (prevState: any, formData: FormData) => {
         const result = await createDeal(formData)
         if (result?.error) {
@@ -23,6 +28,7 @@ export function NewDealForm() {
     }, initialState)
 
     const [currentStep, setCurrentStep] = useState(1)
+    const [useSavedInfo, setUseSavedInfo] = useState<boolean | null>(null)
     const [idDocUrl, setIdDocUrl] = useState("")
     const [vehicleRegDocUrl, setVehicleRegDocUrl] = useState("")
     const [isAnalyzingId, setIsAnalyzingId] = useState(false)
@@ -46,10 +52,60 @@ export function NewDealForm() {
     const [kilometers, setKilometers] = useState("")
     const [vehicleRegOwnerName, setVehicleRegOwnerName] = useState("")
     const [vehicleRegOwnerId, setVehicleRegOwnerId] = useState("")
-    
+
+    // Vehicle Photos & Thumbnail Selection
+    const [vehiclePhotos, setVehiclePhotos] = useState<string[]>([])
+    const [thumbnailUrl, setThumbnailUrl] = useState<string>("")
+    const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
+
     // Biometric Record Mock
     const [isRecording, setIsRecording] = useState(false)
     const [isRecorded, setIsRecorded] = useState(false)
+
+    const [idOcrResult, setIdOcrResult] = useState<any>(null)
+    const [vehicleOcrResult, setVehicleOcrResult] = useState<any>(null)
+    const [showIdOcrJson, setShowIdOcrJson] = useState(false)
+    const [showVehicleOcrJson, setShowVehicleOcrJson] = useState(false)
+
+    const handleVehiclePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files
+        if (!files || files.length === 0) return
+
+        setIsUploadingPhoto(true)
+        const uploadedUrls: string[] = []
+
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i]
+            const formData = new FormData()
+            formData.append("file", file)
+
+            try {
+                const res = await fetch("/api/upload", {
+                    method: "POST",
+                    body: formData,
+                })
+                if (res.ok) {
+                    const data = await res.json()
+                    if (data.url) {
+                        uploadedUrls.push(data.url)
+                    }
+                }
+            } catch (err) {
+                console.error("Photo upload error:", err)
+            }
+        }
+
+        if (uploadedUrls.length > 0) {
+            setVehiclePhotos(prev => {
+                const newPhotos = [...prev, ...uploadedUrls]
+                if (!thumbnailUrl && newPhotos.length > 0) {
+                    setThumbnailUrl(newPhotos[0])
+                }
+                return newPhotos
+            })
+        }
+        setIsUploadingPhoto(false)
+    }
 
     const handleIdUpload = async (url: string, file: File) => {
         setIdDocUrl(url)
@@ -63,10 +119,12 @@ export function NewDealForm() {
                 method: "POST",
                 body: formData,
             })
-            
+
             if (res.ok) {
                 const result = await res.json()
                 if (result.data) {
+                    setIdOcrResult(result.data)
+                    setShowIdOcrJson(true)
                     const { fields, fraudSignals } = result.data
                     if (fields.full_name?.value) {
                         const nameParts = fields.full_name.value.split(" ")
@@ -110,6 +168,8 @@ export function NewDealForm() {
             if (res.ok) {
                 const result = await res.json()
                 if (result.data) {
+                    setVehicleOcrResult(result.data)
+                    setShowVehicleOcrJson(true)
                     const { fields, fraudSignals } = result.data
                     if (fields.plate_number?.value) setLicensePlate(fields.plate_number.value)
                     if (fields.year?.value) setVehicleYear(fields.year.value)
@@ -171,36 +231,32 @@ export function NewDealForm() {
             {/* Wizard Progress Stepper */}
             <div className="flex items-center justify-between px-4">
                 <div className="flex flex-col items-center gap-2">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 font-bold transition-all duration-300 ${
-                        currentStep === 1 ? 'border-primary bg-primary text-on-primary' : currentStep > 1 ? 'bg-primary border-primary text-on-primary' : 'border-outline-variant text-on-surface-variant'
-                    }`}>1</div>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 font-bold transition-all duration-300 ${currentStep === 1 ? 'border-primary bg-primary text-on-primary' : currentStep > 1 ? 'bg-primary border-primary text-on-primary' : 'border-outline-variant text-on-surface-variant'
+                        }`}>1</div>
                     <span className={`text-xs font-semibold ${currentStep >= 1 ? 'text-primary' : 'text-on-surface-variant'}`}>פרטי זהות</span>
                 </div>
                 <div className="flex-grow h-[2px] bg-outline-variant mx-4">
                     <div className="h-full bg-primary transition-all duration-500" style={{ width: currentStep > 1 ? '100%' : '0%' }}></div>
                 </div>
                 <div className="flex flex-col items-center gap-2">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 font-bold transition-all duration-300 ${
-                        currentStep === 2 ? 'border-primary bg-primary text-on-primary' : currentStep > 2 ? 'bg-primary border-primary text-on-primary' : 'border-outline-variant text-on-surface-variant'
-                    }`}>2</div>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 font-bold transition-all duration-300 ${currentStep === 2 ? 'border-primary bg-primary text-on-primary' : currentStep > 2 ? 'bg-primary border-primary text-on-primary' : 'border-outline-variant text-on-surface-variant'
+                        }`}>2</div>
                     <span className={`text-xs font-semibold ${currentStep >= 2 ? 'text-primary' : 'text-on-surface-variant'}`}>פרטי הרכב</span>
                 </div>
                 <div className="flex-grow h-[2px] bg-outline-variant mx-4">
                     <div className="h-full bg-primary transition-all duration-500" style={{ width: currentStep > 2 ? '100%' : '0%' }}></div>
                 </div>
                 <div className="flex flex-col items-center gap-2">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 font-bold transition-all duration-300 ${
-                        currentStep === 3 ? 'border-primary bg-primary text-on-primary' : currentStep > 3 ? 'bg-primary border-primary text-on-primary' : 'border-outline-variant text-on-surface-variant'
-                    }`}>3</div>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 font-bold transition-all duration-300 ${currentStep === 3 ? 'border-primary bg-primary text-on-primary' : currentStep > 3 ? 'bg-primary border-primary text-on-primary' : 'border-outline-variant text-on-surface-variant'
+                        }`}>3</div>
                     <span className={`text-xs font-semibold ${currentStep >= 3 ? 'text-primary' : 'text-on-surface-variant'}`}>אימות ביומטרי</span>
                 </div>
                 <div className="flex-grow h-[2px] bg-outline-variant mx-4">
                     <div className="h-full bg-primary transition-all duration-500" style={{ width: currentStep > 3 ? '100%' : '0%' }}></div>
                 </div>
                 <div className="flex flex-col items-center gap-2">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 font-bold transition-all duration-300 ${
-                        currentStep === 4 ? 'border-primary bg-primary text-on-primary' : 'border-outline-variant text-on-surface-variant'
-                    }`}>4</div>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 font-bold transition-all duration-300 ${currentStep === 4 ? 'border-primary bg-primary text-on-primary' : 'border-outline-variant text-on-surface-variant'
+                        }`}>4</div>
                     <span className={`text-xs font-semibold ${currentStep === 4 ? 'text-primary' : 'text-on-surface-variant'}`}>סיכום ואישור</span>
                 </div>
             </div>
@@ -226,7 +282,9 @@ export function NewDealForm() {
                 <input type="hidden" name="chassisNumber" value={chassisNumber} />
                 <input type="hidden" name="vehicleRegOwnerName" value={vehicleRegOwnerName} />
                 <input type="hidden" name="vehicleRegOwnerId" value={vehicleRegOwnerId} />
-                
+                <input type="hidden" name="thumbnailUrl" value={thumbnailUrl} />
+                <input type="hidden" name="vehicleImages" value={JSON.stringify(vehiclePhotos)} />
+
                 {/* Missing required backend fields */}
                 <input type="hidden" name="title" value={`${vehicleMake || ""} ${vehicleModel || ""} ${vehicleYear || ""}`.trim() || "עסקת מכירת רכב"} />
                 <input type="hidden" name="priceILS" value="150000" />
@@ -243,20 +301,141 @@ export function NewDealForm() {
                             <h2 className="text-xl font-bold text-primary text-right">פרטים אישיים של המוכר</h2>
                             <p className="text-xs text-on-surface-variant text-right">מידע משפטי הנדרש להסכם הרכישה המחייב.</p>
                         </div>
-                        
+
+                        {/* Saved ID Verification Prompt Banner */}
+                        {user?.id_doc_url && (
+                            <div className="p-4 rounded-xl border border-primary/30 bg-primary/10 space-y-3 text-right">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <ShieldCheck className="h-5 w-5 text-primary shrink-0" />
+                                        <span className="text-sm font-bold text-primary">נמצאה תעודת זהות מאומתת בפרופיל</span>
+                                    </div>
+                                    {useSavedInfo === true && (
+                                        <span className="text-xs px-2.5 py-1 rounded-full bg-primary/20 text-primary font-semibold flex items-center gap-1">
+                                            <CheckCircle2 className="h-3.5 w-3.5" />
+                                            משתמש בפרטי הפרופיל
+                                        </span>
+                                    )}
+                                </div>
+                                <p className="text-xs text-on-surface-variant leading-relaxed">
+                                    נמצא מסמך זיהוי מאומת בפרופיל שלך. האם ברצונך להשתמש בפרטים ובמסמך השמור במקום להעלותם מחדש?
+                                </p>
+                                <div className="flex flex-wrap gap-2 pt-1 justify-start">
+                                    {useSavedInfo !== true ? (
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            onClick={() => {
+                                                setUseSavedInfo(true)
+                                                if (user.id_doc_url) setIdDocUrl(user.id_doc_url)
+                                                const savedId = user.id_number || user.teudat_zehut || ""
+                                                if (savedId) {
+                                                    setIdNumber(savedId)
+                                                    setVehicleRegOwnerId(savedId)
+                                                }
+                                                if (user.full_name) {
+                                                    const parts = user.full_name.trim().split(/\s+/)
+                                                    const fName = parts[0] || ""
+                                                    const lName = parts.slice(1).join(" ") || ""
+                                                    setFirstName(fName)
+                                                    setLastName(lName)
+                                                    setVehicleRegOwnerName(user.full_name)
+                                                }
+                                                if (user.birth_date || user.birthDate) {
+                                                    setBirthDate(user.birth_date || user.birthDate)
+                                                }
+                                                if (user.address) {
+                                                    setAddress(user.address)
+                                                }
+                                            }}
+                                            className="bg-primary hover:bg-primary/90 text-on-primary font-bold text-xs flex items-center gap-1.5"
+                                        >
+                                            <CheckCircle2 className="h-4 w-4" />
+                                            כן, השתמש בפרטים השמורים בפרופיל
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => {
+                                                setUseSavedInfo(false)
+                                                setIdDocUrl("")
+                                            }}
+                                            className="border-outline-variant text-on-surface-variant hover:text-on-surface text-xs"
+                                        >
+                                            החלף מסמך / העלה מחדש
+                                        </Button>
+                                    )}
+
+                                    {useSavedInfo === null && (
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() => setUseSavedInfo(false)}
+                                            className="text-on-surface-variant hover:text-on-surface text-xs"
+                                        >
+                                            אני מעדיף להעלות מסמך מחדש
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
                         <div className="space-y-4">
-                            <DocumentUpload
-                                label="סריקת תעודת זהות / דרכון"
-                                onUploadComplete={handleIdUpload}
-                                isLoading={isAnalyzingId}
-                            />
-                            
+                            {useSavedInfo === true ? (
+                                <div className="p-4 rounded-xl border border-primary/20 bg-surface-container-low space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-bold text-primary flex items-center gap-1.5">
+                                            <FileText className="h-4 w-4" />
+                                            מסמך זיהוי מחובר מתוך הפרופיל שלך
+                                        </span>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-xs text-on-surface-variant hover:text-primary h-7"
+                                            onClick={() => {
+                                                setUseSavedInfo(false)
+                                                setIdDocUrl("")
+                                            }}
+                                        >
+                                            החלף מסמך
+                                        </Button>
+                                    </div>
+                                    {idDocUrl && (idDocUrl.startsWith("http") || idDocUrl.startsWith("data:") || idDocUrl.startsWith("/")) ? (
+                                        idDocUrl.toLowerCase().includes(".pdf") ? (
+                                            <div className="p-3 bg-primary/10 rounded-lg text-xs font-bold text-primary flex items-center gap-2">
+                                                <FileText className="h-5 w-5" />
+                                                מסמך PDF שמור בפרופיל
+                                            </div>
+                                        ) : (
+                                            <img src={idDocUrl} alt="תעודת זהות שמורה" className="max-h-40 rounded-lg border border-outline-variant object-contain" />
+                                        )
+                                    ) : (
+                                        <div className="p-3 bg-primary/10 rounded-lg text-xs font-bold text-primary flex items-center gap-2">
+                                            <CheckCircle2 className="h-5 w-5" />
+                                            תעודת זהות מאומתת בפרופיל
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <DocumentUpload
+                                    label="סריקת תעודת זהות / דרכון"
+                                    onUploadComplete={handleIdUpload}
+                                    isLoading={isAnalyzingId}
+                                />
+                            )}
+
                             {isAnalyzingId && (
                                 <div className="flex items-center gap-2 text-xs text-primary animate-pulse justify-end">
                                     <span>סורק מסמך מזהה באמצעות AI SecureOCR...</span>
                                     <Sparkles className="h-4 w-4" />
                                 </div>
                             )}
+
+                            {idOcrResult && <OcrResultCard result={idOcrResult} />}
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-1.5 text-right">
@@ -278,7 +457,7 @@ export function NewDealForm() {
                                     />
                                 </div>
                             </div>
-                            
+
                             <div className="space-y-1.5 text-right">
                                 <label className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">מספר תעודת זהות / דרכון</label>
                                 <Input
@@ -332,13 +511,15 @@ export function NewDealForm() {
                                 onUploadComplete={handleVehicleUpload}
                                 isLoading={isAnalyzingVehicle}
                             />
-                            
+
                             {isAnalyzingVehicle && (
                                 <div className="flex items-center gap-2 text-xs text-secondary animate-pulse justify-end">
                                     <span>סורק רישיון רכב באמצעות AI SecureOCR...</span>
                                     <Sparkles className="h-4 w-4" />
                                 </div>
                             )}
+
+                            {vehicleOcrResult && <OcrResultCard result={vehicleOcrResult} />}
 
                             <div className="text-right">
                                 <label className="text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1.5 block">כותרת העסקה</label>
@@ -428,6 +609,55 @@ export function NewDealForm() {
                                     />
                                 </div>
                             </div>
+
+                            {/* Vehicle Photos Upload & Thumbnail Selector */}
+                            <div className="space-y-3 pt-4 border-t border-white/10 text-right">
+                                <div className="flex justify-between items-center">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-on-surface">תמונות הרכב (אופציונלי)</label>
+                                    <span className="text-[10px] text-on-surface-variant font-mono">{vehiclePhotos.length} תמונות הועלו</span>
+                                </div>
+                                <p className="text-xs text-on-surface-variant">העלה תמונות של הרכב. אם תעלה יותר מתמונה אחת, לחץ על התמונה המועדפת כדי להגדיר אותה כתמונה ראשית בלוח הבקרה.</p>
+
+                                <div className="flex items-center gap-3">
+                                    <label className="cursor-pointer px-4 py-2.5 rounded-xl bg-surface-container-high border border-outline-variant hover:bg-primary/20 text-xs font-bold text-primary flex items-center gap-2 transition-all">
+                                        <span className="material-symbols-outlined text-sm">add_photo_alternate</span>
+                                        <span>{isUploadingPhoto ? "מעלה תמונות..." : "הוסף תמונות רכב"}</span>
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            multiple
+                                            onChange={handleVehiclePhotoUpload}
+                                            disabled={isUploadingPhoto}
+                                            className="hidden"
+                                        />
+                                    </label>
+                                </div>
+
+                                {vehiclePhotos.length > 0 && (
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+                                        {vehiclePhotos.map((photoUrl, pIdx) => {
+                                            const isSelected = thumbnailUrl === photoUrl || (!thumbnailUrl && pIdx === 0)
+                                            return (
+                                                <div
+                                                    key={pIdx}
+                                                    onClick={() => setThumbnailUrl(photoUrl)}
+                                                    className={`relative aspect-video rounded-xl overflow-hidden cursor-pointer border-2 transition-all ${
+                                                        isSelected ? "border-primary ring-2 ring-primary/40 scale-105" : "border-white/10 opacity-60 hover:opacity-100"
+                                                    }`}
+                                                >
+                                                    <img src={photoUrl} alt={`תמונת רכב ${pIdx + 1}`} className="w-full h-full object-cover" />
+                                                    {isSelected && (
+                                                        <div className="absolute top-1 right-1 bg-primary text-on-primary text-[9px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 shadow-lg">
+                                                            <span>תמונה ראשית</span>
+                                                            <span className="material-symbols-outlined text-[10px]">star</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </section>
                 )}
@@ -446,7 +676,7 @@ export function NewDealForm() {
                                 <div className={`w-36 h-36 border-2 border-dashed rounded-full flex items-center justify-center ${isRecording ? 'border-error animate-pulse' : 'border-primary/50'}`}>
                                     <Camera className={`h-12 w-12 ${isRecording ? 'text-error' : 'text-primary/40'}`} />
                                 </div>
-                                
+
                                 {isRecording && (
                                     <div className="absolute top-4 left-4 flex items-center gap-1.5 bg-background/85 px-3 py-1 rounded-full border border-error/30">
                                         <div className="w-2 h-2 bg-error rounded-full animate-ping"></div>
@@ -471,9 +701,8 @@ export function NewDealForm() {
                                 type="button"
                                 onClick={startRecording}
                                 disabled={isRecording}
-                                className={`px-8 py-3 rounded-full font-bold flex items-center gap-2 transition-all ${
-                                    isRecorded ? 'bg-primary text-on-primary' : 'bg-secondary hover:bg-secondary-container text-on-secondary-container'
-                                }`}
+                                className={`px-8 py-3 rounded-full font-bold flex items-center gap-2 transition-all ${isRecorded ? 'bg-primary text-on-primary' : 'bg-secondary hover:bg-secondary-container text-on-secondary-container'
+                                    }`}
                             >
                                 {isRecording ? (
                                     <>
@@ -522,27 +751,27 @@ export function NewDealForm() {
                                 </Alert>
                             )}
 
-                             {(() => {
-                                 if (!vehicleRegOwnerName || !firstName || !lastName) return null;
-                                 const cleanReg = vehicleRegOwnerName.replace(/[^\u0590-\u05FF]/g, "");
-                                 const cleanFirst = firstName.replace(/[^\u0590-\u05FF]/g, "");
-                                 const cleanLast = lastName.replace(/[^\u0590-\u05FF]/g, "");
-                                 
-                                 const isMatch = cleanReg.includes(cleanFirst) && cleanReg.includes(cleanLast);
-                                 
-                                 if (!isMatch) {
-                                     return (
-                                         <Alert variant="destructive" className="bg-yellow-950/20 border-yellow-900/50">
-                                             <ShieldAlert className="h-4 w-4 text-yellow-400" />
-                                             <AlertTitle className="text-yellow-300">חוסר התאמה בשם הבעלים</AlertTitle>
-                                             <AlertDescription className="text-yellow-400 text-xs">
-                                                 מחזיק הרישיון: <strong>{firstName} {lastName}</strong> לעומת בעל הרכב הרשום: <strong>{vehicleRegOwnerName}</strong>
-                                             </AlertDescription>
-                                         </Alert>
-                                     );
-                                 }
-                                 return null;
-                             })()}
+                            {(() => {
+                                if (!vehicleRegOwnerName || !firstName || !lastName) return null;
+                                const cleanReg = vehicleRegOwnerName.replace(/[^\u0590-\u05FF]/g, "");
+                                const cleanFirst = firstName.replace(/[^\u0590-\u05FF]/g, "");
+                                const cleanLast = lastName.replace(/[^\u0590-\u05FF]/g, "");
+
+                                const isMatch = cleanReg.includes(cleanFirst) && cleanReg.includes(cleanLast);
+
+                                if (!isMatch) {
+                                    return (
+                                        <Alert variant="destructive" className="bg-yellow-950/20 border-yellow-900/50">
+                                            <ShieldAlert className="h-4 w-4 text-yellow-400" />
+                                            <AlertTitle className="text-yellow-300">חוסר התאמה בשם הבעלים</AlertTitle>
+                                            <AlertDescription className="text-yellow-400 text-xs">
+                                                מחזיק הרישיון: <strong>{firstName} {lastName}</strong> לעומת בעל הרכב הרשום: <strong>{vehicleRegOwnerName}</strong>
+                                            </AlertDescription>
+                                        </Alert>
+                                    );
+                                }
+                                return null;
+                            })()}
 
                             {vehicleRegOwnerId && idNumber && vehicleRegOwnerId !== idNumber && (
                                 <Alert variant="destructive" className="bg-yellow-950/20 border-yellow-900/50">
@@ -592,7 +821,7 @@ export function NewDealForm() {
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                     נועל כספי נאמנות ומייצר עסקה...
                                 </>
-                            ) : "שליחת העסקה לבדיקת עורך דין"}
+                            ) : "יצירת עסקה חדשה"}
                         </Button>
                     </section>
                 )}

@@ -95,6 +95,10 @@ export default async function DashboardPage() {
               <span className="material-symbols-outlined">handshake</span>
               <span className="text-sm font-semibold">העסקאות שלי</span>
             </Link>
+            <Link className="text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-lg flex items-center gap-4 px-4 py-3 transition-all duration-300" href="/profile">
+              <span className="material-symbols-outlined">account_circle</span>
+              <span className="text-sm font-semibold">פרופיל</span>
+            </Link>
           </nav>
           <div className="mt-auto mb-8 p-4 glass-card rounded-xl">
             <div className="flex items-center justify-between mb-2">
@@ -220,7 +224,7 @@ export default async function DashboardPage() {
                     "https://lh3.googleusercontent.com/aida-public/AB6AXuA_T72TJ7xFT35cY_sV5hBfAOk95rH2QX_ZHnTxrZNyDtKEqB2CwcFaqAXBBv6tDy6y1QXCZO9o0TBU_hS8S6pea6-UsIJKYHg88pNWsQl5PAhPTDfmuSzFteyuVX0W7m1tClMLyFCnh5gL5LQp9-dGzeuwMxwO42XkJxJn0Kafxy3eB2q7uWgdOuqWCw4Y92SKEk6rmtNPEbgmE5GSDkJzW-D6rT06yrbeXVLmNZHb94AtntDnQveoXX8zDqJM3SzLxl7AXmUO1p0",
                     "https://lh3.googleusercontent.com/aida-public/AB6AXuBUACm4siU8LhYAa5vdf0PlsZRx0R1_l1GIIBluvdrV1vor_hGEmDwSuRI6-yzmV-_d_GZgiOeSC-Rp68RXYzHT7GyJLWYCaTW_PHLSePw7qAHsBu3oE6aFJ3XCOmDqvacWiNC3Qk5Kzk_o_6Nro_d6o1Dh5ZoVx8wuI5C612J-HsG6VZE4Fxgab3iSJrUHvbLc7jEhuWbWL6jGMCYYfXA5CGg12Lh96yhApGVjubAyszi11Tiewe2Woi9uhLTBS7bgR6wbn4ll1GI"
                   ]
-                  const imageUrl = carImages[idx % carImages.length]
+                  const imageUrl = (deal as any).thumbnail_url || carImages[idx % carImages.length]
 
                   return (
                     <Link key={deal.id} href={`/deals/${deal.id}`} className={`glass-card rounded-2xl overflow-hidden flex flex-col border-r-4 ${isPrimary ? 'border-r-primary' : 'border-r-secondary'} group hover:bg-surface-container-high transition-all duration-300 hover:-translate-y-1`}>

@@ -57,6 +57,12 @@ export function Navbar({ user }: NavbarProps) {
               >
                 העסקאות שלי
               </Link>
+              <Link
+                href="/profile"
+                className="text-sm font-medium text-on-surface-variant hover:text-primary transition-colors"
+              >
+                פרופיל
+              </Link>
             </>
           )}
           <a href="/#pricing" className="text-sm font-medium text-on-surface-variant hover:text-primary transition-colors">
@@ -121,6 +127,13 @@ export function Navbar({ user }: NavbarProps) {
                   className="text-sm font-medium hover:text-primary transition-colors"
                 >
                   העסקאות שלי
+                </Link>
+                <Link
+                  href="/profile"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="text-sm font-medium hover:text-primary transition-colors"
+                >
+                  פרופיל
                 </Link>
               </>
             )}

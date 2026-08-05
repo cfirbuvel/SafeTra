@@ -22,7 +22,11 @@ export default async function NewDealPage() {
     redirect("/admin")
   }
 
-  const isProfileComplete = user.full_name && user.id_number && user.email
+  const fullName = user.full_name || user.user_metadata?.full_name || user.user_metadata?.name
+  const idNumber = user.id_number || user.teudat_zehut || user.user_metadata?.id_number || user.user_metadata?.teudat_zehut
+  const contact = user.email || user.phone || user.user_metadata?.phone
+
+  const isProfileComplete = Boolean(fullName && idNumber && contact)
 
   if (!isProfileComplete) {
     redirect("/auth/complete-profile?next=/deals/new")
@@ -79,6 +83,10 @@ export default async function NewDealPage() {
             <span className="material-symbols-outlined">handshake</span>
             <span className="text-sm font-semibold">העסקאות שלי</span>
           </Link>
+          <Link className="text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-lg flex items-center gap-4 px-4 py-3 transition-all duration-300" href="/profile">
+            <span className="material-symbols-outlined">account_circle</span>
+            <span className="text-sm font-semibold">פרופיל</span>
+          </Link>
         </nav>
         <div className="mt-auto mb-8 p-4 glass-card rounded-xl">
           <div className="flex items-center justify-between mb-2">
@@ -91,7 +99,7 @@ export default async function NewDealPage() {
 
       {/* Main Canvas */}
       <main className="lg:mr-72 pt-24 pb-32 px-4 md:px-8 max-w-[1440px] mx-auto min-h-screen text-right">
-        <NewDealForm />
+        <NewDealForm user={user} />
       </main>
 
       {/* Bottom Mobile Navigation */}

@@ -11,7 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { logout } from "@/lib/actions/auth"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { User, LayoutDashboard, UserCircle, Settings, LogOut } from "lucide-react"
+import { User, LayoutDashboard, UserCircle, Settings, LogOut, ArrowRightLeft } from "lucide-react"
 
 interface UserAccountNavProps {
     user: any
@@ -38,13 +38,14 @@ export function UserAccountNav({ user }: UserAccountNavProps) {
 
     // Prioritize showing a real email. If it's a shadow email, show phone instead if available.
     const displayEmail = user.isShadowEmail ? (user.phone || "") : (user.email || "")
+    const avatarSrc = user.image || user.avatar_url || user.user_metadata?.avatar_url || user.user_metadata?.picture || null
 
     return (
         <DropdownMenu>
             <DropdownMenuTrigger className="outline-none">
                 <Avatar className="h-8 w-8 cursor-pointer ring-primary/10 ring-offset-background transition-colors hover:ring-2 hover:ring-primary/20">
-                    <AvatarImage src={user.image || "/images/default-avatar.png"} alt={user.full_name || "User avatar"} />
-                    <AvatarFallback className="bg-primary/5 text-primary text-xs font-bold">
+                    {avatarSrc && <AvatarImage src={avatarSrc} alt={user.full_name || "User avatar"} className="object-cover" />}
+                    <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
                         {initials}
                     </AvatarFallback>
                 </Avatar>
@@ -66,6 +67,13 @@ export function UserAccountNav({ user }: UserAccountNavProps) {
                     <Link href={user.role === 'lawyer' ? "/lawyer" : "/dashboard"} className="cursor-pointer w-full flex items-center">
                         <LayoutDashboard className="ml-2 h-4 w-4" />
                         <span>{user.role === 'lawyer' ? "לוח בקרה (עו״ד)" : "דשבורד"}</span>
+                    </Link>
+                </DropdownMenuItem>
+
+                <DropdownMenuItem asChild>
+                    <Link href="/deals" className="cursor-pointer w-full flex items-center">
+                        <ArrowRightLeft className="ml-2 h-4 w-4" />
+                        <span>העסקאות שלי</span>
                     </Link>
                 </DropdownMenuItem>
 

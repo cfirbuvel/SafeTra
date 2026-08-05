@@ -75,6 +75,9 @@ export async function updateUserProfile(data: {
     teudatZehut?: string
     email?: string
     phone?: string
+    idDocUrl?: string
+    birthDate?: string
+    address?: string
 }) {
     const supabase = await getSupabaseClient()
 
@@ -92,45 +95,86 @@ export async function updateUserProfile(data: {
         .eq("id", user.id)
         .maybeSingle()
 
-    const updates: any = {}
+    const profileUpdate: any = {
+        id: user.id,
+    }
 
     if (data.fullName && data.fullName.trim()) {
-        updates.full_name = data.fullName.trim()
+        profileUpdate.full_name = data.fullName.trim()
     }
 
     if (data.avatarUrl) {
-        updates.avatar_url = data.avatarUrl
+        profileUpdate.avatar_url = data.avatarUrl
     }
 
     if (data.email && data.email.trim()) {
-        updates.email = data.email.trim()
+        profileUpdate.email = data.email.trim()
     }
 
     if (data.phone && data.phone.trim()) {
-        updates.phone = data.phone.trim()
+        profileUpdate.phone = data.phone.trim()
     }
 
-    // Only set id_number if not already saved (locked once saved)
+    if (data.birthDate && data.birthDate.trim()) {
+        profileUpdate.birth_date = data.birthDate.trim()
+    }
+
+    if (data.address && data.address.trim()) {
+        profileUpdate.address = data.address.trim()
+        profileUpdate.city = data.address.trim()
+    }
+
     const currentId = existingProfile?.id_number || existingProfile?.teudat_zehut
-    if (!currentId && data.teudatZehut && data.teudatZehut.trim()) {
-        updates.id_number = data.teudatZehut.trim()
+    if (data.teudatZehut && data.teudatZehut.trim()) {
+        profileUpdate.id_number = data.teudatZehut.trim()
+        profileUpdate.teudat_zehut = data.teudatZehut.trim()
     }
 
-    if (Object.keys(updates).length === 0) {
-        return { success: true }
-    }
-
+    // Upsert into public.profiles
     const { error } = await (serviceClient
         .from("profiles") as any)
-        .update(updates)
-        .eq("id", user.id)
+        .upsert(profileUpdate, { onConflict: "id" })
 
     if (error) {
         console.error("Error updating user profile:", error)
         return { error: "שגיאה בעדכון הפרטים" }
     }
 
+    // Safely update id_doc_url on public.profiles if column exists
+    if (data.idDocUrl) {
+        try {
+            await (serviceClient.from("profiles") as any)
+                .update({ id_doc_url: data.idDocUrl })
+                .eq("id", user.id)
+        } catch (colErr) {
+            console.warn("Optional id_doc_url column update ignored:", colErr)
+        }
+    }
+
+    // Synchronize Supabase Auth user_metadata
+    try {
+        const metaUpdates: any = {}
+        if (data.fullName) metaUpdates.full_name = data.fullName.trim()
+        if (data.avatarUrl) metaUpdates.avatar_url = data.avatarUrl
+        if (data.phone) metaUpdates.phone = data.phone.trim()
+        if (data.idDocUrl) metaUpdates.id_doc_url = data.idDocUrl
+        if (data.birthDate) metaUpdates.birth_date = data.birthDate.trim()
+        if (data.address) metaUpdates.address = data.address.trim()
+
+        if (Object.keys(metaUpdates).length > 0) {
+            await serviceClient.auth.admin.updateUserById(user.id, {
+                user_metadata: {
+                    ...(user.user_metadata || {}),
+                    ...metaUpdates
+                }
+            })
+        }
+    } catch (metaErr) {
+        console.warn("Metadata sync warning:", metaErr)
+    }
+
     revalidatePath("/", "layout")
+    revalidatePath("/profile")
     return { success: true }
 }
 

@@ -37,12 +37,12 @@ export function NotificationMenu({ userId }: { userId: string }) {
 
         fetchNotifications()
 
-        // 1. Fast background poll (every 3 seconds) for instant response without refresh
+        // 1. Gentle background poll (every 30 seconds)
         const pollInterval = setInterval(() => {
             fetchNotifications()
-        }, 3000)
+        }, 30000)
 
-        // 2. Real-time Postgres changes channel
+        // 2. Real-time Postgres changes channel filtered specifically for this user
         const channel = supabase
             .channel(`user-notifications-${userId}`)
             .on(
@@ -51,22 +51,10 @@ export function NotificationMenu({ userId }: { userId: string }) {
                     event: '*',
                     schema: 'public',
                     table: 'notifications',
+                    filter: `user_id=eq.${userId}`,
                 },
                 async () => {
                     await fetchNotifications()
-                    router.refresh()
-                }
-            )
-            .on(
-                'postgres_changes',
-                {
-                    event: '*',
-                    schema: 'public',
-                    table: 'deal_invitations',
-                },
-                async () => {
-                    await fetchNotifications()
-                    router.refresh()
                 }
             )
             .subscribe()

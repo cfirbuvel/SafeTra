@@ -42,15 +42,13 @@ export async function POST(request: Request) {
         console.log(text)
         console.log("--- OCR RAW END ---")
 
-        // Document Classification
-        let docType: DocumentType = targetDocType || (classifyDocument(text) as DocumentType)
+        // Document Classification (Auto-detect type based on image text)
+        const autoDetectedType = classifyDocument(text) as DocumentType
+        let docType: DocumentType = autoDetectedType !== "unknown" ? autoDetectedType : (targetDocType || "id_card")
         
         const fileName = (file.name || "").toLowerCase()
-        if (!targetDocType && (fileName.includes("car") || fileName.includes("reg") || fileName.includes("vehicle") || fileName.includes("רישיון"))) {
+        if (docType === "unknown" && (fileName.includes("car") || fileName.includes("reg") || fileName.includes("vehicle") || fileName.includes("רישיון"))) {
             docType = "vehicle_registration"
-        }
-        if (!docType || docType === "unknown") {
-            docType = targetDocType || "id_card"
         }
 
         // Run extraction with final docType based strictly on actual document text

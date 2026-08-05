@@ -1,19 +1,12 @@
 import { redirect } from "next/navigation"
-import { createSupabaseServer } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/actions/auth"
-import { cookies } from "next/headers"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
-import { format } from "date-fns"
-import { he } from "date-fns/locale"
+import { getCurrentUser } from "@/lib/actions/auth"
 import { getUserDeals } from "@/lib/actions/deals"
-import { BackButton } from "@/components/BackButton"
+import { Navbar } from "@/components/Navbar"
 
 export const metadata = {
-  title: "העסקאות שלי - AutoTrust",
-  description: "ניהול העסקאות שלך",
+  title: "העסקאות שלי - SafeTra",
+  description: "ניהול וצפייה בכל העסקאות שלך ב-SafeTra",
 }
 
 interface Deal {
@@ -22,112 +15,217 @@ interface Deal {
   price_ils: number
   status: string
   created_at: string
+  license_plate?: string
+  vehicle_make?: string
+  vehicle_model?: string
+  vehicle_year?: number
+  chassis_number?: string
+  seller_id: string
+  buyer_id: string
+  thumbnail_url?: string
 }
-
-const statusLabels: Record<string, string> = {
-  DRAFT: "טיוטה",
-  SUBMITTED: "הוגשה",
-  UNDER_REVIEW: "בבדיקה",
-  AWAITING_PAYMENT: "ממתין לתשלום",
-  PAYMENT_VERIFICATION: "אימות תשלום",
-  OWNERSHIP_TRANSFER_PENDING: "העברת בעלות",
-  COMPLETED: "הושלם",
-  CANCELLED: "בוטל",
-  EXPIRED: "פג תוקף",
-  READY_FOR_NEXT_STAGE: "מוכנה לשלב הבא", // Keeping legacy just in case
-}
-
-const statusColors: Record<string, string> = {
-  DRAFT: "bg-gray-500",
-  SUBMITTED: "bg-blue-500",
-  UNDER_REVIEW: "bg-yellow-500",
-  AWAITING_PAYMENT: "bg-purple-500",
-  PAYMENT_VERIFICATION: "bg-orange-500",
-  OWNERSHIP_TRANSFER_PENDING: "bg-teal-500",
-  COMPLETED: "bg-green-500",
-  CANCELLED: "bg-red-500",
-  EXPIRED: "bg-gray-700",
-  READY_FOR_NEXT_STAGE: "bg-green-500",
-}
-
-import { Navbar } from "@/components/Navbar"
 
 export default async function DealsPage() {
   const user = await getCurrentUser()
 
-  if (!user) {
-    redirect("/auth/login")
-  }
-
-  if (user.role === "lawyer") {
-    redirect("/lawyer")
-  }
-
-  if (user.role === "admin") {
-    redirect("/admin")
-  }
+  if (!user) redirect("/auth/login")
+  if (user.role === "lawyer") redirect("/lawyer")
+  if (user.role === "admin") redirect("/admin")
 
   const deals = await getUserDeals()
   const userDeals = (deals || []) as Deal[]
 
+  // Map status to timeline step active index (1 to 5)
+  const getTimelineStep = (status: string) => {
+    switch (status) {
+      case "DRAFT":
+        return 1
+      case "SUBMITTED":
+      case "UNDER_REVIEW":
+        return 2
+      case "AWAITING_PAYMENT":
+        return 3
+      case "PAYMENT_VERIFICATION":
+      case "OWNERSHIP_TRANSFER_PENDING":
+        return 4
+      case "COMPLETED":
+        return 5
+      default:
+        return 1
+    }
+  }
+
+  const getStatusHebrew = (status: string) => {
+    switch (status) {
+      case "DRAFT": return "טיוטה";
+      case "SUBMITTED": return "הוגש";
+      case "UNDER_REVIEW": return "בבדיקה";
+      case "AWAITING_PAYMENT": return "ממתין לתשלום";
+      case "PAYMENT_VERIFICATION": return "אימות תשלום";
+      case "OWNERSHIP_TRANSFER_PENDING": return "העברת בעלות בהמתנה";
+      case "COMPLETED": return "הושלם";
+      case "CANCELLED": return "בוטל";
+      default: return status;
+    }
+  }
+
+  const carImages = [
+    "https://lh3.googleusercontent.com/aida-public/AB6AXuA_T72TJ7xFT35cY_sV5hBfAOk95rH2QX_ZHnTxrZNyDtKEqB2CwcFaqAXBBv6tDy6y1QXCZO9o0TBU_hS8S6pea6-UsIJKYHg88pNWsQl5PAhPTDfmuSzFteyuVX0W7m1tClMLyFCnh5gL5LQp9-dGzeuwMxwO42XkJxJn0Kafxy3eB2q7uWgdOuqWCw4Y92SKEk6rmtNPEbgmE5GSDkJzW-D6rT06yrbeXVLmNZHb94AtntDnQveoXX8zDqJM3SzLxl7AXmUO1p0",
+    "https://lh3.googleusercontent.com/aida-public/AB6AXuBUACm4siU8LhYAa5vdf0PlsZRx0R1_l1GIIBluvdrV1vor_hGEmDwSuRI6-yzmV-_d_GZgiOeSC-Rp68RXYzHT7GyJLWYCaTW_PHLSePw7qAHsBu3oE6aFJ3XCOmDqvacWiNC3Qk5Kzk_o_6Nro_d6o1Dh5ZoVx8wuI5C612J-HsG6VZE4Fxgab3iSJrUHvbLc7jEhuWbWL6jGMCYYfXA5CGg12Lh96yhApGVjubAyszi11Tiewe2Woi9uhLTBS7bgR6wbn4ll1GI"
+  ]
+
   return (
     <>
-      <Navbar user={user} />
-      <div className="min-h-screen bg-background p-4 sm:p-6 lg:p-8" dir="rtl">
-        <div className="max-w-7xl mx-auto">
-          <BackButton href="/dashboard" className="mb-4" />
-          <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="min-h-screen bg-background text-foreground" dir="rtl">
+        <Navbar user={user} />
+
+        {/* Sidebar (Desktop Only) */}
+        <aside className="hidden lg:flex flex-col h-screen fixed right-0 top-0 w-72 bg-surface-container-lowest border-l border-outline-variant shadow-xl z-40 pt-20 px-4">
+          <div className="flex items-center gap-4 mb-8 p-4 rounded-xl bg-surface-container">
+            <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center border border-primary/20">
+              <span className="material-symbols-outlined text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>shield</span>
+            </div>
             <div>
-              <h1 className="text-4xl font-bold text-foreground">העסקאות שלי</h1>
-              <p className="text-muted-foreground mt-2">ניהול וצפייה בכל העסקאות שלך</p>
+              <p className="text-base font-bold text-primary">SafeTra ריבוני</p>
+              <p className="text-[10px] text-on-surface-variant uppercase tracking-widest font-semibold opacity-70">רמת כספת v4</p>
+            </div>
+          </div>
+          <nav className="space-y-2">
+            <Link className="text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-lg flex items-center gap-4 px-4 py-3 transition-all duration-300" href="/dashboard">
+              <span className="material-symbols-outlined">dashboard</span>
+              <span className="text-sm font-semibold">לוח בקרה</span>
+            </Link>
+            <Link className="text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-lg flex items-center gap-4 px-4 py-3 transition-all duration-300" href="/deals/new">
+              <span className="material-symbols-outlined">add_circle</span>
+              <span className="text-sm font-semibold">עסקה חדשה</span>
+            </Link>
+            <Link className="bg-primary-container text-on-primary-container rounded-lg flex items-center gap-4 px-4 py-3 transition-all duration-300" href="/deals">
+              <span className="material-symbols-outlined">handshake</span>
+              <span className="text-sm font-semibold">העסקאות שלי</span>
+            </Link>
+            <Link className="text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-lg flex items-center gap-4 px-4 py-3 transition-all duration-300" href="/profile">
+              <span className="material-symbols-outlined">account_circle</span>
+              <span className="text-sm font-semibold">פרופיל</span>
+            </Link>
+          </nav>
+          <div className="mt-auto mb-8 p-4 glass-card rounded-xl">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-mono font-bold text-primary tracking-widest">מובלעת אבטחה</span>
+              <span className="w-2 h-2 rounded-full bg-primary animate-pulse shadow-[0_0_8px_#10b981]"></span>
+            </div>
+            <p className="text-xs text-on-surface-variant opacity-70 leading-relaxed">כל ערוצי העסקאות מוגנים באמצעות פרוטוקול AES 256-bit.</p>
+          </div>
+        </aside>
+
+        {/* Main Canvas */}
+        <main className="lg:mr-72 pt-24 pb-32 px-4 md:px-8 max-w-[1440px] mx-auto min-h-screen text-right">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
+            <div>
+              <h1 className="font-display-lg text-3xl font-bold text-on-surface mb-1">העסקאות שלי</h1>
+              <p className="text-sm text-on-surface-variant max-w-lg">ניהול וצפייה בכל העסקאות שלך במערכת SafeTra המאובטחת.</p>
             </div>
             <Link href="/deals/new">
-              <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">צור עסקה חדשה</Button>
+              <button className="bg-primary hover:bg-primary/95 text-on-primary font-bold px-6 py-3 rounded-xl flex items-center gap-2 transition-all emerald-glow active:scale-95 group">
+                <span className="material-symbols-outlined group-hover:rotate-90 transition-transform">add</span>
+                התחלת עסקה חדשה
+              </button>
             </Link>
           </div>
 
           {userDeals.length === 0 ? (
-            <Card className="p-12 text-center">
-              <h2 className="text-2xl font-bold text-foreground mb-4">אין עסקאות עדיין</h2>
-              <p className="text-muted-foreground mb-6">ההתחל בעסקה חדשה עכשיו</p>
-              <Link href="/deals/new">
-                <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">צור עסקה ראשונה</Button>
-              </Link>
-            </Card>
-          ) : (
-            /* Deals list grid */
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {userDeals.map((deal) => (
-                <Link key={deal.id} href={`/deals/${deal.id}`}>
-                  <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer h-full">
-                    <div className="flex items-start justify-between mb-4">
-                      <h3 className="text-lg font-bold text-foreground flex-1 line-clamp-2">{deal.title}</h3>
-                      <Badge className={`${statusColors[deal.status] || "bg-gray-500"} text-white ms-2 flex-shrink-0`}>
-                        {statusLabels[deal.status] || deal.status}
-                      </Badge>
-                    </div>
+              <Link href="/deals/new" className="col-span-1 border-2 border-dashed border-white/10 rounded-2xl flex flex-col items-center justify-center p-12 group hover:border-primary/40 hover:bg-primary/5 transition-all cursor-pointer">
+                <div className="w-16 h-16 rounded-full bg-surface-container-highest flex items-center justify-center mb-4 group-hover:bg-primary/20 group-hover:scale-110 transition-all">
+                  <span className="material-symbols-outlined text-primary text-3xl">add_circle</span>
+                </div>
+                <h3 className="text-lg font-bold text-on-surface mb-1">התחלת עסקה</h3>
+                <p className="text-xs text-on-surface-variant text-center max-w-[200px]">התחל עסקה בטוחה בשיטת P2P עם הגנה מוסדית.</p>
+              </Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {userDeals.map((deal, idx) => {
+                const dealStep = getTimelineStep(deal.status)
+                const progressPct = dealStep * 20
+                const isSeller = deal.seller_id === user.id
+                const isPrimary = deal.status !== "CANCELLED" && deal.status !== "EXPIRED"
+                const imageUrl = deal.thumbnail_url || carImages[idx % carImages.length]
 
-                    <div className="space-y-3">
-                      <div>
-                        <p className="text-sm text-muted-foreground">מחיר</p>
-                        <p className="text-xl font-bold text-foreground">
+                return (
+                  <Link key={deal.id} href={`/deals/${deal.id}`} className={`glass-card rounded-2xl overflow-hidden flex flex-col border-r-4 ${isPrimary ? 'border-r-primary' : 'border-r-secondary'} group hover:bg-surface-container-high transition-all duration-300 hover:-translate-y-1`}>
+                    <div className="h-48 w-full relative">
+                      <img className="w-full h-full object-cover" src={imageUrl} alt={deal.title} />
+                      <div className="absolute top-4 left-4 glass-card px-3 py-1 rounded-full flex items-center gap-1.5">
+                        <span className={`w-2 h-2 rounded-full ${isPrimary ? 'bg-primary shadow-[0_0_8px_#10b981]' : 'bg-secondary shadow-[0_0_8px_#ffb77d]'}`}></span>
+                        <span className="text-[10px] font-mono font-bold text-on-surface">
+                          {getStatusHebrew(deal.status)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="p-6 flex flex-col gap-4">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="font-bold text-lg text-on-surface line-clamp-1">{deal.title}</h3>
+                          <p className="text-[10px] font-mono text-on-surface-variant mt-1">VIN: {deal.chassis_number || "WP0AA2A9XPS******"}</p>
+                        </div>
+                        <span className={`text-xl font-bold ${isPrimary ? 'text-primary' : 'text-secondary'}`}>
                           ₪{Number(deal.price_ils).toLocaleString("he-IL")}
-                        </p>
+                        </span>
                       </div>
 
-                      <div>
-                        <p className="text-sm text-muted-foreground">נוצרה ב</p>
-                        <p className="text-sm text-foreground">
-                          {format(new Date(deal.created_at), "dd/MM/yyyy HH:mm", { locale: he })}
+                      <div className="flex items-center gap-3 p-2 bg-surface-container-lowest rounded-xl">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold ${isPrimary ? 'bg-primary/20 text-primary' : 'bg-secondary/20 text-secondary'}`}>
+                          {isSeller ? "מוכר" : "קונה"}
+                        </div>
+                        <div className="mr-3">
+                          <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-wider">{isSeller ? "אתה המוכר" : "אתה הקונה"}</p>
+                          <p className="text-xs text-on-surface font-semibold">צומת SafeTra מאומת</p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-1 mt-2">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-on-surface-variant font-medium">התקדמות התהליך</span>
+                          <span className={`font-bold ${isPrimary ? 'text-primary' : 'text-secondary'}`}>{progressPct}%</span>
+                        </div>
+                        <div className="w-full h-1 bg-surface-container rounded-full overflow-hidden">
+                          <div className={`h-full ${isPrimary ? 'bg-primary shadow-[0_0_10px_#10b981]' : 'bg-secondary'}`} style={{ width: `${progressPct}%` }}></div>
+                        </div>
+                        <p className="text-[10px] text-on-surface-variant mt-1.5 flex items-center gap-1">
+                          <span className="material-symbols-outlined text-xs">info</span>
+                          {deal.status === "DRAFT" && "ממתין להעלאת מסמכים"}
+                          {deal.status === "SUBMITTED" && "ממתין להקצאת עורך דין"}
+                          {deal.status === "UNDER_REVIEW" && "עורך הדין בודק את הגילויים"}
+                          {deal.status === "AWAITING_PAYMENT" && "ממתין להפקדה בחשבון הנאמנות"}
+                          {deal.status === "PAYMENT_VERIFICATION" && "מאמת את נעילת הכספים"}
+                          {deal.status === "OWNERSHIP_TRANSFER_PENDING" && "העברת בעלות רכב בתהליך"}
+                          {deal.status === "COMPLETED" && "העסקה הושלמה בהצלחה"}
+                          {deal.status === "CANCELLED" && "העסקה בוטלה"}
                         </p>
                       </div>
                     </div>
-                  </Card>
-                </Link>
-              ))}
+                  </Link>
+                )
+              })}
             </div>
           )}
-        </div>
+        </main>
+
+        {/* Bottom Mobile Navigation */}
+        <footer className="lg:hidden fixed bottom-0 left-0 right-0 w-full z-50 bg-background/90 backdrop-blur-2xl border-t border-white/10 shadow-[0_-4px_20px_rgba(0,0,0,0.4)] flex justify-around items-center px-4 py-3">
+          <Link href="/dashboard" className="flex flex-col items-center justify-center text-on-surface-variant opacity-65 hover:text-primary transition-colors">
+            <span className="material-symbols-outlined">dashboard</span>
+            <span className="text-[10px] font-semibold mt-0.5">לוח בקרה</span>
+          </Link>
+          <Link href="/deals/new" className="flex flex-col items-center justify-center text-on-surface-variant opacity-65 hover:text-primary transition-colors">
+            <span className="material-symbols-outlined">add_box</span>
+            <span className="text-[10px] font-semibold mt-0.5">יצירה</span>
+          </Link>
+          <Link href="/deals" className="flex flex-col items-center justify-center text-primary font-bold">
+            <span className="material-symbols-outlined">handshake</span>
+            <span className="text-[10px] font-semibold mt-0.5">עסקאות</span>
+          </Link>
+        </footer>
       </div>
     </>
   )
