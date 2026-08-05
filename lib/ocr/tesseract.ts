@@ -4,7 +4,7 @@ import fs from "fs"
 
 /**
  * Executes OCR on an image file buffer.
- * Safely resolves workerPath in both local environment and Vercel serverless functions.
+ * Uses CDN worker URLs on Vercel/serverless environments to bypass local node_modules worker script bundling issues.
  */
 export async function runOCR(imageBuffer: Buffer): Promise<{ text: string; confidence: number }> {
     return new Promise(async (resolve) => {
@@ -23,15 +23,23 @@ export async function runOCR(imageBuffer: Buffer): Promise<{ text: string; confi
         }, 20000);
 
         try {
+            const isVercel = !!process.env.VERCEL || process.env.NODE_ENV === "production";
+
             const options: any = {
                 gzip: false,
                 errorHandler: (err: any) => console.error("[OCR Worker Error]:", err)
             };
 
-            // Only specify explicit filesystem workerPath if the file physically exists (e.g. local dev)
-            const localWorkerPath = path.join(process.cwd(), "node_modules", "tesseract.js", "src", "worker-script", "node", "index.js");
-            if (fs.existsSync(localWorkerPath)) {
-                options.workerPath = localWorkerPath;
+            if (isVercel) {
+                // On Vercel / Production Serverless: Use CDN URLs to prevent worker-script relative require failures
+                options.workerPath = "https://cdn.jsdelivr.net/npm/tesseract.js@v5.0.5/dist/worker.min.js";
+                options.corePath = "https://cdn.jsdelivr.net/npm/tesseract.js-core@v5.0.0";
+                options.langPath = "https://tessdata.projectnaptha.com/4.0.0";
+            } else {
+                const localWorkerPath = path.join(process.cwd(), "node_modules", "tesseract.js", "src", "worker-script", "node", "index.js");
+                if (fs.existsSync(localWorkerPath)) {
+                    options.workerPath = localWorkerPath;
+                }
             }
 
             worker = await createWorker(["heb", "eng"], 1, options);
