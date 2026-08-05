@@ -702,6 +702,19 @@ export async function updateDealStatus(dealId: string, newStatus: string) {
   return { data }
 }
 
+export async function getLatestDealStatus(dealId: string) {
+  const serviceClient = getServiceRoleClient()
+  const { data, error } = await (serviceClient.from("deals") as any)
+    .select("status, updated_at")
+    .eq("id", dealId)
+    .maybeSingle()
+
+  if (error || !data) {
+    return { status: null, error: error?.message || "Not found" }
+  }
+  return { status: data.status, updatedAt: data.updated_at }
+}
+
 export async function getUserDeals() {
   const supabase = await getSupabaseClient()
 
