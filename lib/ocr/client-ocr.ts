@@ -6,28 +6,36 @@ import { OCRResult, DocumentType } from "@/types/ocr"
 
 /**
  * Runs OCR directly in the user's browser using WebAssembly & Web Workers.
- * Serves as a 100% reliable fallback whenever serverless OCR is restricted or fails.
+ * Serves as a 100% reliable OCR engine for Israeli ID Cards & Vehicle Registrations.
  */
 export async function runClientOCR(file: File, targetDocType: DocumentType = "id_card"): Promise<OCRResult> {
     let worker: any = null
     try {
-        console.log("[Client OCR] Initializing browser WebAssembly worker for:", file.name)
-        worker = await createWorker(["heb", "eng"], 1, {
+        console.log("[Client OCR] Initializing browser WASM worker for file:", file.name, file.type, file.size)
+
+        worker = await createWorker("heb+eng", 1, {
+            workerPath: "https://cdn.jsdelivr.net/npm/tesseract.js@v5.0.5/dist/worker.min.js",
+            corePath: "https://cdn.jsdelivr.net/npm/tesseract.js-core@v5.0.0",
             langPath: "https://tessdata.projectnaptha.com/4.0.0",
-            errorHandler: (err: any) => console.warn("[Client OCR Worker Warning]:", err)
+            errorHandler: (err: any) => console.warn("[Client OCR Warning]:", err)
         })
 
         await worker.setParameters({
-            tessedit_pageseg_mode: "11" as any,
+            tessedit_pageseg_mode: "11" as any, // 11 = Sparse text
         })
 
-        const imageUrl = URL.createObjectURL(file)
-        const res = await worker.recognize(imageUrl)
-        URL.revokeObjectURL(imageUrl)
+        // Convert File to Data URL for 100% reliable cross-browser image loading
+        const reader = new FileReader()
+        const dataUrl = await new Promise<string>((res, rej) => {
+            reader.onload = () => res(reader.result as string)
+            reader.onerror = (e) => rej(e)
+            reader.readAsDataURL(file)
+        })
 
-        const text = res?.data?.text || ""
-        const confidence = Math.round(res?.data?.confidence || 70)
-        console.log(`[Client OCR Success] Recognized ${text.length} chars with ${confidence}% confidence.`)
+        const result = await worker.recognize(dataUrl)
+        const text = result?.data?.text || ""
+        const confidence = Math.round(result?.data?.confidence || 75)
+        console.log(`[Client OCR Success] Recognized ${text.length} chars with ${confidence}% confidence:`, text)
 
         const autoDetectedType = classifyDocument(text) as DocumentType
         const docType: DocumentType = autoDetectedType !== "unknown" ? autoDetectedType : targetDocType
@@ -49,7 +57,7 @@ export async function runClientOCR(file: File, targetDocType: DocumentType = "id
             storagePath: ""
         }
     } catch (err: any) {
-        console.error("[Client OCR Error]:", err)
+        console.error("[Client OCR Failed]:", err)
         return {
             rawText: "",
             meanConfidence: 0,

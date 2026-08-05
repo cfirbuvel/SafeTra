@@ -131,7 +131,8 @@ export function NewDealForm({ user }: NewDealFormProps = {}) {
             }
 
             // Fallback to client WASM OCR if server OCR didn't find fields
-            if (!finalData?.fields?.id_number?.value && file.type.startsWith("image/")) {
+            const isPdf = file.name.toLowerCase().endsWith(".pdf")
+            if (!finalData?.fields?.id_number?.value && !isPdf) {
                 console.log("[NewDealForm ID] Running Client-Side WASM OCR fallback...")
                 const clientResult = await runClientOCR(file, "id_card")
                 if (clientResult.fields && Object.keys(clientResult.fields).length > 0) {
@@ -191,7 +192,8 @@ export function NewDealForm({ user }: NewDealFormProps = {}) {
             }
 
             // Fallback to client WASM OCR if server OCR didn't find fields
-            if (!finalData?.fields?.plate_number?.value && file.type.startsWith("image/")) {
+            const isVehiclePdf = file.name.toLowerCase().endsWith(".pdf")
+            if (!finalData?.fields?.plate_number?.value && !isVehiclePdf) {
                 console.log("[NewDealForm Vehicle] Running Client-Side WASM OCR fallback...")
                 const clientResult = await runClientOCR(file, "vehicle_registration")
                 if (clientResult.fields && Object.keys(clientResult.fields).length > 0) {

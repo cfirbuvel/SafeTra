@@ -156,7 +156,8 @@ export function ProfileForm({ user }: ProfileFormProps) {
             }
 
             // Fallback to client WASM OCR if server OCR didn't find fields
-            if (!finalData?.fields?.id_number?.value && file.type.startsWith("image/")) {
+            const isPdf = file.name.toLowerCase().endsWith(".pdf")
+            if (!finalData?.fields?.id_number?.value && !isPdf) {
                 console.log("[ProfileForm] Server OCR yielded no fields. Running Client-Side WASM OCR fallback...")
                 const clientResult = await runClientOCR(file, "id_card")
                 if (clientResult.fields && Object.keys(clientResult.fields).length > 0) {
