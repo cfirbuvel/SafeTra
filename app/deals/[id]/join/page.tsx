@@ -7,6 +7,7 @@ import JoinDealForm from "./join-deal-form"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ShieldCheck, Handshake, Landmark, Car, UserCheck, Camera } from "lucide-react"
+import { DealRealtimeListener } from "@/components/realtime/DealRealtimeListener"
 
 export default async function JoinDealPage(props: {
     params: Promise<{ id: string }>,
@@ -62,6 +63,7 @@ export default async function JoinDealPage(props: {
     return (
         <>
             <Navbar user={user} />
+            <DealRealtimeListener dealId={deal.id} currentStatus={deal.status} />
             <div className="min-h-screen bg-background text-foreground py-12 px-4 sm:px-6 lg:px-8" dir="rtl">
                 <div className="max-w-xl mx-auto space-y-6">
                     <BackButton href="/dashboard" label="חזור ללוח הבקרה" className="text-on-surface-variant hover:text-primary transition-colors" />

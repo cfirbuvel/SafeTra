@@ -45,10 +45,10 @@ interface DealPageProps {
   params: Promise<{ id: string }>
 }
 
-import { BackButton } from "@/components/BackButton"
-
 import { getCurrentUser } from "@/lib/actions/auth"
 import { Navbar } from "@/components/Navbar"
+import { BackButton } from "@/components/BackButton"
+import { DealRealtimeListener } from "@/components/realtime/DealRealtimeListener"
 
 export default async function DealPage({ params }: DealPageProps) {
   const { id } = await params
@@ -94,6 +94,7 @@ export default async function DealPage({ params }: DealPageProps) {
   return (
     <>
       <Navbar user={user} />
+      <DealRealtimeListener dealId={deal.id} currentStatus={deal.status} />
       <div className="min-h-screen bg-background p-4 sm:p-6 lg:p-8" dir="rtl">
         <div className="max-w-2xl mx-auto">
           <div className="mb-6">

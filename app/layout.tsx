@@ -2,6 +2,9 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Inter, Outfit } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
+import { Toaster } from "sonner"
+import { getCurrentUser } from "@/lib/actions/auth"
+import { GlobalRealtimeListener } from "@/components/realtime/GlobalRealtimeListener"
 import "./globals.css"
 
 const inter = Inter({
@@ -25,11 +28,13 @@ export const metadata: Metadata = {
   },
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const user = await getCurrentUser()
+
   return (
     <html lang="he" dir="rtl" className="dark">
       <head>
@@ -40,9 +45,10 @@ export default function RootLayout({
       </head>
       <body className={`${inter.variable} ${outfit.variable} font-sans antialiased bg-background text-foreground`}>
         {children}
+        <Toaster position="top-left" richColors theme="dark" closeButton />
+        <GlobalRealtimeListener userId={user?.id} role={user?.role} />
         <Analytics />
       </body>
     </html>
   )
 }
-

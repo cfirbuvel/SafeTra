@@ -2,6 +2,7 @@ import { getCurrentUser } from "@/lib/actions/auth"
 import { redirect } from "next/navigation"
 import { getServiceRoleClient } from "@/lib/supabase/service-role"
 import Link from "next/link"
+import { LawyerRealtimeListener } from "@/components/realtime/LawyerRealtimeListener"
 
 export const metadata = {
   title: "Legal Review Console - SafeTra",
@@ -76,6 +77,7 @@ export default async function LawyerDashboard() {
 
   return (
     <div className="min-h-screen bg-background text-foreground" dir="rtl">
+      <LawyerRealtimeListener />
       {/* Desktop Sidebar Navigation */}
       <nav className="hidden lg:flex flex-col h-screen fixed right-0 top-0 w-72 bg-surface-container-lowest border-l border-outline-variant shadow-xl z-50">
         <div className="p-6 flex flex-col items-start">
