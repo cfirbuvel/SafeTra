@@ -4,7 +4,7 @@ import { Inter, Outfit } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { Toaster } from "sonner"
 import { getCurrentUser } from "@/lib/actions/auth"
-import { GlobalRealtimeListener } from "@/components/realtime/GlobalRealtimeListener"
+import { RealtimeManager } from "@/components/realtime/RealtimeManager"
 import "./globals.css"
 
 const inter = Inter({
@@ -46,7 +46,7 @@ export default async function RootLayout({
       <body className={`${inter.variable} ${outfit.variable} font-sans antialiased bg-background text-foreground`}>
         {children}
         <Toaster position="top-left" richColors theme="dark" closeButton />
-        <GlobalRealtimeListener userId={user?.id} role={user?.role} />
+        <RealtimeManager userId={user?.id} role={user?.role} />
         <Analytics />
       </body>
     </html>

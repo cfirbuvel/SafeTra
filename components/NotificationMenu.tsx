@@ -37,32 +37,60 @@ export function NotificationMenu({ userId }: { userId: string }) {
 
         fetchNotifications()
 
-        // 1. Gentle background poll (every 30 seconds)
+        // Listen for global custom realtime events
+        const handleCustomUpdate = () => {
+            fetchNotifications()
+        }
+        window.addEventListener("safetra-notification-received", handleCustomUpdate)
+        window.addEventListener("safetra-deal-updated", handleCustomUpdate)
+        window.addEventListener("safetra-invitation-updated", handleCustomUpdate)
+
+        // Gentle background poll (every 10 seconds)
         const pollInterval = setInterval(() => {
             fetchNotifications()
-        }, 30000)
+        }, 10000)
 
-        // 2. Real-time Postgres changes channel filtered specifically for this user
-        const channel = supabase
-            .channel(`user-notifications-${userId}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: '*',
-                    schema: 'public',
-                    table: 'notifications',
-                    filter: `user_id=eq.${userId}`,
-                },
-                async () => {
-                    await fetchNotifications()
+        const setupRealtimeChannel = async () => {
+            try {
+                const { data: { session } } = await supabase.auth.getSession()
+                if (session?.access_token) {
+                    supabase.realtime.setAuth(session.access_token)
                 }
-            )
-            .subscribe()
+
+                const channel = supabase
+                    .channel(`user-notifications-${userId}`)
+                    .on(
+                        'postgres_changes',
+                        {
+                            event: '*',
+                            schema: 'public',
+                            table: 'notifications',
+                            filter: `user_id=eq.${userId}`,
+                        },
+                        async () => {
+                            await fetchNotifications()
+                        }
+                    )
+                    .subscribe()
+
+                return () => {
+                    supabase.removeChannel(channel)
+                }
+            } catch (e) {
+                console.warn("[NotificationMenu Realtime Error]:", e)
+            }
+        }
+
+        let cleanupChannel: any = null
+        setupRealtimeChannel().then((clean) => { cleanupChannel = clean })
 
         return () => {
             isMounted = false
+            window.removeEventListener("safetra-notification-received", handleCustomUpdate)
+            window.removeEventListener("safetra-deal-updated", handleCustomUpdate)
+            window.removeEventListener("safetra-invitation-updated", handleCustomUpdate)
             clearInterval(pollInterval)
-            supabase.removeChannel(channel)
+            if (cleanupChannel) cleanupChannel()
         }
     }, [userId, supabase, router])
 
