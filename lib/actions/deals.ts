@@ -176,6 +176,11 @@ export async function inviteBuyer(dealId: string, buyerPhone: string) {
     return { error: "שגיאה ביצירת הזמנה" }
   }
 
+  // 5.5 Link buyer_id directly to deals table so buyer deal list updates in real time
+  await (serviceClient.from("deals") as any)
+    .update({ buyer_id: targetUserId })
+    .eq("id", dealId)
+
   // 6. Notify Buyer (Registered user or shadow user)
   await createNotification({
     userId: targetUserId,
@@ -188,7 +193,10 @@ export async function inviteBuyer(dealId: string, buyerPhone: string) {
   // 7. Generate UNIQUE Link
   const inviteLink = `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/deals/${dealId}/join?invite=${invitation.id}`
 
+  revalidatePath("/dashboard")
+  revalidatePath("/deals")
   revalidatePath(`/deals/${dealId}`)
+  revalidatePath("/lawyer")
   return { success: true, link: inviteLink, dealId: dealId }
 }
 
@@ -542,8 +550,35 @@ export async function approveDeal(dealId: string) {
     return { error: "שגיאה באישור העסקה" }
   }
 
+  // Notify seller that buyer approved the proposal
+  if (deal.seller_id) {
+    await createNotification({
+      userId: deal.seller_id,
+      dealId: dealId,
+      type: "DEAL_APPROVED",
+      title: "הקונה אישר את הצעת הרכישה! 🤝",
+      message: `הקונה אישר את התנאים עבור העסקה "${deal.title || 'הרכב'}". העסקה עברה לבדיקת עורך דין.`
+    })
+  }
+
+  // Notify lawyers
+  const { data: staff } = await (serviceClient.from("profiles") as any)
+    .select("id")
+    .in("role", ["lawyer", "admin"])
+  for (const member of (staff || [])) {
+    await createNotification({
+      userId: member.id,
+      dealId: dealId,
+      type: "STATUS_CHANGE",
+      title: "עסקה אושרה ע״י הקונה",
+      message: `העסקה "${deal.title || 'הרכב'}" אושרה ע״י הקונה ומוכנה לבדיקת עורך דין.`
+    })
+  }
+
+  revalidatePath("/dashboard")
+  revalidatePath("/deals")
   revalidatePath(`/deals/${dealId}`)
-  revalidatePath("/lawyer") // Update lawyer dashboard
+  revalidatePath("/lawyer")
 }
 
 export async function rejectDeal(dealId: string) {
@@ -659,6 +694,8 @@ export async function updateDealStatus(dealId: string, newStatus: string) {
     })
   }
 
+  revalidatePath("/dashboard")
+  revalidatePath("/deals")
   revalidatePath(`/deals/${dealId}`)
   revalidatePath("/lawyer")
 

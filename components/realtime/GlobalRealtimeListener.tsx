@@ -17,11 +17,11 @@ export function GlobalRealtimeListener({ userId, role }: GlobalRealtimeListenerP
     useEffect(() => {
         if (!userId) return
 
-        console.log("[Global Realtime] Initializing live subscriptions for user:", userId, "Role:", role)
+        console.log("[Global Realtime] Subscribing for user:", userId, "Role:", role)
 
-        // 1. Notification Realtime Channel
+        // 1. Notifications Channel
         const notifChannel = supabase
-            .channel(`global-notifications-${userId}`)
+            .channel(`global-notifs-${userId}`)
             .on(
                 "postgres_changes",
                 {
@@ -50,32 +50,36 @@ export function GlobalRealtimeListener({ userId, role }: GlobalRealtimeListenerP
             )
             .subscribe()
 
-        // 2. User Deals Status Realtime Channel (for Buyer / Seller)
+        // 2. Deals Channel (INSERT and UPDATE)
         const dealsChannel = supabase
-            .channel(`global-deals-${userId}`)
+            .channel(`global-deals-all-${userId}`)
             .on(
                 "postgres_changes",
                 {
-                    event: "UPDATE",
+                    event: "*",
                     schema: "public",
                     table: "deals",
                 },
                 (payload) => {
-                    const updatedDeal = payload.new as any
-                    const isRelevant =
-                        updatedDeal.seller_id === userId ||
-                        updatedDeal.buyer_id === userId ||
-                        role === "lawyer" ||
-                        role === "admin"
+                    console.log("[Realtime Global Deals Event]:", payload.eventType, payload.new)
+                    router.refresh()
+                }
+            )
+            .subscribe()
 
-                    if (isRelevant) {
-                        console.log("[Realtime Deal Update]:", updatedDeal.id, updatedDeal.status)
-                        toast.info("סטטוס העסקה עודכן בלייב! ⚡", {
-                            description: `עסקה #${updatedDeal.id.slice(0, 8).toUpperCase()}`,
-                            duration: 4000,
-                        })
-                        router.refresh()
-                    }
+        // 3. Invitations Channel
+        const inviteChannel = supabase
+            .channel(`global-invites-${userId}`)
+            .on(
+                "postgres_changes",
+                {
+                    event: "*",
+                    schema: "public",
+                    table: "deal_invitations",
+                },
+                (payload) => {
+                    console.log("[Realtime Invitations Event]:", payload.eventType, payload.new)
+                    router.refresh()
                 }
             )
             .subscribe()
@@ -83,6 +87,7 @@ export function GlobalRealtimeListener({ userId, role }: GlobalRealtimeListenerP
         return () => {
             supabase.removeChannel(notifChannel)
             supabase.removeChannel(dealsChannel)
+            supabase.removeChannel(inviteChannel)
         }
     }, [userId, role, supabase, router])
 

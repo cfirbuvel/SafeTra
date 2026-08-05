@@ -35,20 +35,22 @@ export function DealRealtimeListener({ dealId, currentStatus }: DealRealtimeList
             .on(
                 "postgres_changes",
                 {
-                    event: "UPDATE",
+                    event: "*",
                     schema: "public",
                     table: "deals",
                     filter: `id=eq.${dealId}`,
                 },
                 (payload) => {
                     const newDeal = payload.new as any
-                    console.log("[Deal Live Update Detected]:", newDeal.status)
+                    console.log("[Deal Live Update Detected]:", newDeal?.status)
 
-                    const hebrewStatus = statusHebrewMap[newDeal.status] || newDeal.status
-                    toast.success("עדכון חי בעסקה ⚡", {
-                        description: `הסטטוס השתנה ל: ${hebrewStatus}`,
-                        duration: 5000,
-                    })
+                    if (newDeal?.status) {
+                        const hebrewStatus = statusHebrewMap[newDeal.status] || newDeal.status
+                        toast.success("עדכון חי בעסקה ⚡", {
+                            description: `הסטטוס השתנה ל: ${hebrewStatus}`,
+                            duration: 5000,
+                        })
+                    }
 
                     router.refresh()
                 }

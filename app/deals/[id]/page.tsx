@@ -10,6 +10,9 @@ import { he } from "date-fns/locale"
 
 import { Handshake, CheckCircle2, XCircle, ShieldCheck, Camera } from "lucide-react"
 
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
 export const metadata = {
   title: "פרטי עסקה - AutoTrust",
   description: "צפייה בפרטי עסקה וניהול סטטוס",

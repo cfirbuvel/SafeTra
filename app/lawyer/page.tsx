@@ -4,6 +4,9 @@ import { getServiceRoleClient } from "@/lib/supabase/service-role"
 import Link from "next/link"
 import { LawyerRealtimeListener } from "@/components/realtime/LawyerRealtimeListener"
 
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
 export const metadata = {
   title: "Legal Review Console - SafeTra",
   description: "SafeTra Secure Auto Exchange Lawyer Console",

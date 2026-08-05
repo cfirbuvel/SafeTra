@@ -4,6 +4,9 @@ import { getCurrentUser } from "@/lib/actions/auth"
 import { getUserDeals } from "@/lib/actions/deals"
 import { Navbar } from "@/components/Navbar"
 
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
 export const metadata = {
   title: "העסקאות שלי - SafeTra",
   description: "ניהול וצפייה בכל העסקאות שלך ב-SafeTra",
