@@ -4,6 +4,9 @@ const nextConfig = {
     unoptimized: true,
   },
   serverExternalPackages: ['tesseract.js'],
+  outputFileTracingIncludes: {
+    '/api/**/*': ['./node_modules/tesseract.js/**/*'],
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: '50mb',
