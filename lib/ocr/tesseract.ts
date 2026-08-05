@@ -2,10 +2,17 @@ import { createWorker } from "tesseract.js"
 
 /**
  * Executes OCR on an image file buffer (Server Side).
- * Never uses browser dist/worker.min.js in Node.js runtime.
+ * Delegates processing to client-side WASM engine when running in Vercel serverless environments.
  */
 export async function runOCR(imageBuffer: Buffer): Promise<{ text: string; confidence: number }> {
     return new Promise(async (resolve) => {
+        // In Vercel serverless lambdas, delegate OCR to browser WASM engine to prevent worker thread errors & log warnings
+        if (process.env.VERCEL) {
+            console.log("[Server OCR] Vercel environment detected. Delegating document parsing to client WASM engine.");
+            resolve({ text: "", confidence: 0 });
+            return;
+        }
+
         let worker: any = null;
         let isCompleted = false;
 
@@ -26,7 +33,6 @@ export async function runOCR(imageBuffer: Buffer): Promise<{ text: string; confi
                 errorHandler: (err: any) => console.error("[Server OCR Worker Error]:", err)
             };
 
-            // Use standard node worker initialization without overriding workerPath with browser files
             worker = await createWorker("heb+eng", 1, options);
 
             await worker.setParameters({
