@@ -87,6 +87,13 @@ export function RealtimeManager({ userId, role }: RealtimeManagerProps) {
 
                             window.dispatchEvent(new CustomEvent("safetra-deal-updated", { detail: payload }))
                             router.refresh()
+
+                            // Auto-refresh dynamic views (/dashboard, /deals, /lawyer)
+                            if (typeof window !== "undefined" && ["/dashboard", "/deals", "/lawyer"].includes(window.location.pathname)) {
+                                setTimeout(() => {
+                                    window.location.reload()
+                                }, 300)
+                            }
                         }
                     )
                     .subscribe((stat) => {
@@ -109,6 +116,12 @@ export function RealtimeManager({ userId, role }: RealtimeManagerProps) {
 
                             window.dispatchEvent(new CustomEvent("safetra-invitation-updated", { detail: payload }))
                             router.refresh()
+
+                            if (typeof window !== "undefined" && ["/dashboard", "/deals", "/lawyer"].includes(window.location.pathname)) {
+                                setTimeout(() => {
+                                    window.location.reload()
+                                }, 300)
+                            }
                         }
                     )
                     .subscribe((stat) => {

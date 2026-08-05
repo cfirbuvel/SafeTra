@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo } from "react"
+import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { createSupabaseClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
@@ -23,44 +23,77 @@ interface DealRealtimeListenerProps {
 
 export function DealRealtimeListener({ dealId, currentStatus }: DealRealtimeListenerProps) {
     const router = useRouter()
-    const supabase = useMemo(() => createSupabaseClient(), [])
 
     useEffect(() => {
         if (!dealId) return
 
-        console.log("[Deal Realtime] Subscribing to live updates for deal:", dealId)
+        const supabase = createSupabaseClient()
+        let isSubscribed = true
 
-        const channel = supabase
-            .channel(`deal-room-${dealId}`)
-            .on(
-                "postgres_changes",
-                {
-                    event: "*",
-                    schema: "public",
-                    table: "deals",
-                    filter: `id=eq.${dealId}`,
-                },
-                (payload) => {
-                    const newDeal = payload.new as any
-                    console.log("[Deal Live Update Detected]:", newDeal?.status)
-
-                    if (newDeal?.status) {
-                        const hebrewStatus = statusHebrewMap[newDeal.status] || newDeal.status
-                        toast.success("עדכון חי בעסקה ⚡", {
-                            description: `הסטטוס השתנה ל: ${hebrewStatus}`,
-                            duration: 5000,
-                        })
-                    }
-
-                    router.refresh()
+        const setupListener = async () => {
+            try {
+                // Ensure JWT auth token is set on WebSocket
+                const { data: { session } } = await supabase.auth.getSession()
+                if (session?.access_token) {
+                    supabase.realtime.setAuth(session.access_token)
                 }
-            )
-            .subscribe()
+
+                console.log(`[DealRealtimeListener] Subscribing to live room: deal-room-${dealId}`)
+
+                const channel = supabase
+                    .channel(`deal-room-${dealId}`)
+                    .on(
+                        "postgres_changes",
+                        {
+                            event: "*",
+                            schema: "public",
+                            table: "deals",
+                            filter: `id=eq.${dealId}`,
+                        },
+                        (payload) => {
+                            if (!isSubscribed) return
+                            const newDeal = payload.new as any
+                            console.log("[DealRealtimeListener] ⚡ Event received:", payload.eventType, newDeal)
+
+                            if (newDeal?.status) {
+                                const hebrewStatus = statusHebrewMap[newDeal.status] || newDeal.status
+                                toast.success("עדכון חי בעסקה ⚡", {
+                                    description: `הסטטוס השתנה ל: ${hebrewStatus}`,
+                                    duration: 5000,
+                                })
+                            }
+
+                            // Trigger instant page refresh
+                            router.refresh()
+
+                            // If status actually changed, force full reload to ensure RSC Server Components re-render
+                            if (newDeal?.status && newDeal.status !== currentStatus) {
+                                setTimeout(() => {
+                                    window.location.reload()
+                                }, 400)
+                            }
+                        }
+                    )
+                    .subscribe((status) => {
+                        console.log(`[DealRealtimeListener] Channel Status:`, status)
+                    })
+
+                return () => {
+                    supabase.removeChannel(channel)
+                }
+            } catch (err) {
+                console.error("[DealRealtimeListener Error]:", err)
+            }
+        }
+
+        let cleanup: any = null
+        setupListener().then((clean) => { cleanup = clean })
 
         return () => {
-            supabase.removeChannel(channel)
+            isSubscribed = false
+            if (cleanup) cleanup()
         }
-    }, [dealId, supabase, router])
+    }, [dealId, currentStatus, router])
 
     return null
 }
